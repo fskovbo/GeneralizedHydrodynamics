@@ -61,7 +61,7 @@ methods (Access = public)
     
 
     function corrMat = calcCorrelationMatrix(obj, g_0, g_t, theta_t, rho_t, rhoS_t, u_t)
-        % Calculates correlations between g_0 and g_t
+        % Calcula
         
         corrMat     = zeros(obj.M, obj.M, 2);
         dudr_t      = gradient(u_t, obj.rapid_grid, 0, 0 ); % ***
@@ -75,7 +75,6 @@ methods (Access = public)
             
             corr_prod    = rhoS_t.*theta_0y.*f_0y.*g_0y./abs(dudr_t); % (1xNxM)
          
-            % Calculate source terms required for indirect propagator
             W2_temp    = obj.rhoS_0(:,:,y_index).*f_0y.*g_0y; % should be (1xNx1) 
             W2_temp_dr = obj.applyDressing( W2_temp, theta_0y, 0 ); % (1xNx1)
             W2_temp_sdr= W2_temp_dr - W2_temp; 
@@ -94,12 +93,12 @@ methods (Access = public)
                 cp_tx       = corr_prod(:,:,x_index);
                 g_tx        = g_t(:,:,x_index);
                 
-                gamma       = obj.findRootSet( u_tx, obj.x_grid(y_index), dudr_tx );
+                gamma       = obj.findRootSet( u_tx, obj.x_grid(y_index), dudr_tx ); % ** (might give problems with extrapolation)
 
                 
                 % Calculate contribution from direct propagator
-                direct_temp = obj.interpRapidities( cp_tx.*g_tx, gamma); % (1xG)
-                direct      = sum(direct_temp,2); % sum over gamma 
+                direct_temp = obj.interpRapidities( cp_tx.*g_tx, gamma); % (1xG) ***
+                direct      = sum(direct_temp,2); % sum over gamma ***
                 
                 % Calculate indirect propagator
                 W2          = - heaviside( u_tx - obj.x_grid(y_index) ) .* W2_temp_sdr;
@@ -122,31 +121,31 @@ methods (Access = private)
     function [indirect, W1, W3] = calcIndirectCorrelation(obj, W1, W2, W3, gamma, theta_tx, rho_tx, rhoS_tx, u_tx, g_tx, corr_prod_x )
         % Moved calculation to separate function to declutter for-loops
         
-        if all( obj.a_eff0 == 0 ) % homogeneous system --> no indirect corr
+        if all( obj.a_eff0 == 0 ) % homogeneous system
             indirect    = 0;
             return
         end
         
-        delta_k = obj.rapid_grid(2) - obj.rapid_grid(1);
-        delta_x = obj.x_grid(2) - obj.x_grid(1);
+        dk      = obj.rapid_grid(2) - obj.rapid_grid(1);
+        dx      = obj.x_grid(2) - obj.x_grid(1);
         f_tx    = obj.getStatFactor( theta_tx );
 
         
-        % Update First source term, W1 
+        % Update W1 
         Kern    = 1/(2*pi) * obj.calcScatteringRapidDeriv( obj.rapid_grid, gamma );
         Kern_dr = obj.applyDressing(Kern, theta_tx, 1);
-        W1      = W1 - delta_x*Kern_dr.*obj.interpRapidities(corr_prod_x , gamma); 
+        W1      = W1 - dx*Kern_dr.*obj.interpRapidities(corr_prod_x , gamma); 
 
         
         % Solve for Delta
         a_eff   = obj.interpSpace( obj.a_eff0, u_tx ); % evaluate a_eff0 at x = u(t_corr, x_corr, lambda)         
         a_eff   = permute( diag( permute(a_eff, [3 2 1])), [2 1]); % a_eff and u must be evaluated at same rapidity  
 
-        kernel  = delta_k/(2*pi) * obj.calcScatteringRapidDeriv( obj.rapid_grid, obj.rapid_grid );
+        kernel  = dk/(2*pi) * obj.calcScatteringRapidDeriv( obj.rapid_grid, obj.rapid_grid );
         U       = eye(obj.N,obj.N) + kernel.*theta_tx;
 
         vec     = rhoS_tx .* f_tx;
-        Umat    = diag( (2*pi*a_eff).^(-1) ) + delta_x*diag( vec ) - delta_x*inv(U).*vec; % is right, if U is right --- otherwise use U' 
+        Umat    = diag( (2*pi*a_eff).^(-1) ) + dx*diag( vec ) - dx*inv(U).*vec; % is right, if U is right --- otherwise use U' 
 
         Delta   = (Umat\(W1+W2+W3)')'; % Solve integral equation through iteration
 
@@ -154,7 +153,7 @@ methods (Access = private)
         % IMPORTANT! update W3 for next step
         integr      = vec .* Delta;
         integr_sdr  = obj.applyDressing( integr, theta_tx, 1) - integr; % should be (1xNxM)
-        W3          = W3 + delta_x*integr_sdr; 
+        W3          = W3 + dx*integr_sdr; 
 
         
         % Calculate indirect contribution via Delta

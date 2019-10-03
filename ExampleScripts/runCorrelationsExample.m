@@ -1,14 +1,14 @@
-clear all; %close all;
+clear all; close all;
 
 addpath('..\Functions\')
 
 %% define parameters
 
-N       = 2^7;
-M       = 2^7;
+N       = 2^8;
+M       = 2^8;
 
 kmax    = 7;
-xmax    = 3;
+xmax    = 15;
 
 T       = 5;
 
@@ -19,7 +19,7 @@ dt      = 0.01; %0.025;
 
 k_array     = linspace(-kmax,kmax,N);
 x_array     = linspace(-xmax,xmax,M);
-tcorr_array = 0.1:0.1:0.3;
+tcorr_array = 0.2:0.2:1;
 
 
 %% HOMOGENEOUS COUPLING
@@ -35,26 +35,25 @@ LLS             = LiebLinigerSolver(x_array, k_array, couplings, stepOrder, extr
 
 
 c_idx           = [0, 0];
-areCurrents     = [0, 1];
+areCurrents     = [0, 0];
 
 
 c = 4;
 b = 5/c^4;
 a = 2*b*c^2;
+
     
 coup_init       = couplings;
-% coup_init.mu    = @(t,x) a*x.^2 - b*x.^4;
-coup_init.mu    = @(t,x) 5 - 5*x.^2;
+coup_init.mu    = @(t,x) a*x.^2 - b*x.^4;
+% coup_init.mu    = @(t,x) 5 - 5*x.^2;
 
 
-corrmat = LLS.calcCorrelationMatrix(T, coup_init, tcorr_array, dt, c_idx, areCurrents);
+[corrmat, theta, C1P] = LLS.calcCorrelationMatrix(T, coup_init, tcorr_array, dt, c_idx, areCurrents);
 
 
 %% PLOT
 for i = 1:length(tcorr_array)
-%     q_0 = LLS.calcCharges(GHDcorrC.theta(:,:,:,1), 0, 0);
-%     q_t = LLS.calcCharges(GHDcorrC.theta(:,:,:,i+1), 0, 1);
-    
+ 
     figure
     
     
@@ -76,17 +75,17 @@ for i = 1:length(tcorr_array)
     set(gca,'YDir','normal')
     title('indirect')
     
-%     subplot(3,2,5)
-%     plot(x_array, q_0)
-%     xlim([-xmax, xmax])
-%     ylabel(['n(y, 0)'])
-%     xlabel('y')
-%     
-%     subplot(3,2,6)
-%     plot(x_array, q_t)
-%     xlim([-xmax, xmax])
-%     ylabel(['n(x, t = ' num2str(tcorr_array(i)) ')'])
-%     xlabel('x')
+    subplot(3,2,5)
+    plot(x_array, C1P(:,1))
+    xlim([-xmax, xmax])
+    ylabel(['O(y, 0)'])
+    xlabel('y')
+    
+    subplot(3,2,6)
+    plot(x_array, C1P(:,1+i))
+    xlim([-xmax, xmax])
+    ylabel(['O(x, t = ' num2str(tcorr_array(i)) ')'])
+    xlabel('x')
     
     suptitle(['<n(x, t = ' num2str(tcorr_array(i)) ') n(y, 0)>'])
     
@@ -112,15 +111,15 @@ end
 % end
 
 
-for i = 1:length(tcorr_array)
-    figure
-    hold on
-    imagesc(x_array,x_array, corrmat(:,:,2,i))
-    line([-xmax, xmax],[-xmax, xmax],'Color','k')
-    ylabel('x')
-    xlabel('y')
-    axis tight
-    
-    set(gca,'YDir','normal')
-     
-end
+% for i = 1:length(tcorr_array)
+%     figure
+%     hold on
+%     imagesc(x_array,x_array, corrmat(:,:,2,i))
+%     line([-xmax, xmax],[-xmax, xmax],'Color','k')
+%     ylabel('x')
+%     xlabel('y')
+%     axis tight
+%     
+%     set(gca,'YDir','normal')
+%      
+% end

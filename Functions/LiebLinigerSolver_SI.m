@@ -2,6 +2,7 @@ classdef LiebLinigerSolver_SI
     % Wraps around LLS such that one can pass and receive quantitites in SI
     % units.
 
+    
 properties (Access = private)
     % Physical constants
     m_si        = 87*1.6605402e-27; % Rb-87 mass

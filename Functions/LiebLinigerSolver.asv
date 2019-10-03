@@ -138,7 +138,6 @@ methods (Access = protected)
     
     
     function theta = calcFillingFraction(obj, e_eff)
-        % Quasi-particles in LL-model are fermions
        theta = 1./(1 + exp(e_eff)); 
     end
     
@@ -157,6 +156,7 @@ methods (Access = protected)
         end
         
         % Calculate acceleration from inhomogenous interaction
+        % NEED TO CHECK DIMENSIONS/INDICES OF RAPID!!
         a_eff_c = 0;
         if ~isempty(obj.couplings.dcdt) || ~isempty(obj.couplings.dcdx)
             % Calculate derivative of scattering phase with respect to
