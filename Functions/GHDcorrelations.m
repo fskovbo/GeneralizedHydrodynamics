@@ -66,8 +66,8 @@ methods (Access = public)
         corrMat     = zeros(obj.M, obj.M, 2);
         dudr_t      = gradient(u_t, obj.rapid_grid, 0, 0 ); % ***
 
-        parfor y_index = 1:obj.M
-%         for y_index = 1:obj.M
+%         parfor y_index = 1:obj.M
+        for y_index = 1:obj.M
 
             theta_0y    = obj.theta_0(:,:,y_index);
             f_0y        = obj.getStatFactor(theta_0y);
@@ -146,7 +146,7 @@ methods (Access = private)
         U       = eye(obj.N,obj.N) + kernel.*theta_tx;
 
         vec     = rhoS_tx .* f_tx;
-        Umat    = diag( (2*pi*a_eff).^(-1) ) + delta_x*diag( vec ) - delta_x*inv(U).*vec; % is right, if U is right --- otherwise use U' 
+        Umat    = diag( (2*pi*a_eff).^(-1) ) + delta_x*diag( vec ) - delta_x*inv(U).*vec'; % is right, if U is right --- otherwise use U' 
 
         Delta   = (Umat\(W1+W2+W3)')'; % Solve integral equation through iteration
 

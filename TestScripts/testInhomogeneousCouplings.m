@@ -64,6 +64,38 @@ n2_t        = LLS1.calcCharges(theta2_t, 0, t_array);
 %% ------------ Plot results -------------------
 
 
+% Initial state plot
+figure
+hold on
+subplot(2,2,1)
+imagesc(x_array,k_array, squeeze(theta1_init) )
+colormap(hot)
+caxis([ 0 1])
+set(gca,'YDir','normal') 
+title('Harmonic')
+
+subplot(2,2,2)
+imagesc(x_array,k_array, squeeze(theta2_init) )
+colormap(hot)
+caxis([ 0 1])
+set(gca,'YDir','normal') 
+title('Anharmonic')
+
+subplot(2,2,3)
+plot(x_array, n1_t(:,1))
+xlabel('x')
+ylabel('n')
+ylim([0 1])
+xlim([-xmax, xmax])
+
+subplot(2,2,4)
+plot(x_array, n2_t(:,1))
+xlabel('x')
+ylabel('n')
+ylim([0 1])
+xlim([-xmax, xmax])
+
+
 % Stability plot
 figure
 hold on
