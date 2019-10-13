@@ -38,9 +38,12 @@ couplings.dDeltadx  = @(t,x) (6*pi*tanh(3*t).*cos(4*pi*(t - x)))/5;
 
 %% Initialize state and solve dynamics
 XXZ         = XXZchainSolver(x_array, k_array, couplings, Ntypes);
+tic
 theta_init  = XXZ.calcThermalState(T);
+toc
+tic
 theta_t     = XXZ.propagateTheta(theta_init, t_array);
-
+toc
 %% Calculate charges
 sz_t        = XXZ.calcCharges(theta_t, 0, t_array);
 h_t         = XXZ.calcCharges(theta_t, 2, t_array); % - couplings.Delta(t_array, x_array')/4;

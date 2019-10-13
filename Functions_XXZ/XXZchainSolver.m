@@ -161,8 +161,8 @@ methods (Access = protected)
         
         r_arg   = (rapid1-rapid2);
 
-        dT1     = (1 - I_type).*obj.calcMomentumRapidDeriv(t, x, r_arg, abs(type1-type2));
-        dT2     = obj.calcMomentumRapidDeriv(t, x, r_arg, type1+type2);
+        dT1     = (1 - I_type).*obj.calcMomentumDeltaDeriv(t, x, r_arg, abs(type1-type2));
+        dT2     = obj.calcMomentumDeltaDeriv(t, x, r_arg, type1+type2);
         
         dT1(isnan(dT1)) = 0; % removes any NaN
         dT2(isnan(dT2)) = 0; % removes any NaN
