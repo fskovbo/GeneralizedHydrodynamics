@@ -15,15 +15,15 @@ classdef XXZchainSolver < GeneralizedHydroSolver
 properties (Access = protected)
     
     % Formulas of model formated as strings
-    energy      = '-sinh(acosh(Delta)) * sinh(type*acosh(Delta)) / (cosh(type*acosh(Delta)) - cos(2*rapid)) - type*B';
-    momentum    = '2*atan( coth(type*acosh(Delta)/2) * tan(rapid) )';
+    energy      = '-sinh(Theta) * sinh(type*Theta) / (cosh(type*Theta) - cos(2*rapid)) - type*B';
+    momentum    = '2*atan( coth(type*Theta/2) * tan(rapid) )';
     scattering  = '0' % overloaded derivatives
     
     % Species of quasiparticle
     quasiSpecies= 'fermion'; 
     
     % Names of couplings in cell (must match model formulas)
-    couplingNames = {'B' , 'Delta'};
+    couplingNames = {'B' , 'Theta'};
     
 end % end private properties
     
@@ -54,6 +54,7 @@ end % end public methods
 
 methods (Access = protected)
 
+    
     function dT = calcScatteringRapidDeriv(obj, t, x, rapid1, rapid2, type1, type2)
         % Reshape input to right dimensions
         rapid1  = reshape(rapid1, length(rapid1), 1); % rapid1 is 1st index

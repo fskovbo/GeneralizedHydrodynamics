@@ -28,7 +28,7 @@ extrapFlag  = false;
 T           = 0.25;
 
 %% Define physical couplings
-couplings   = {@(t,x) -1 - 8*x.^2 , @(t,x) 1.5 + 0.3*tanh(3*t).*sin( 4*pi*(x-t) ) };
+couplings   = {@(t,x) -1 - 8*x.^2 , @(t,x) acosh(1.5 + 0.3*tanh(3*t).*sin( 4*pi*(x-t) ) ) };
 
 
 %% Initialize state and solve dynamics
