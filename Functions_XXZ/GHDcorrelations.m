@@ -13,6 +13,8 @@ properties (Access = private)
     
     rapid_grid  = [];
     x_grid      = [];
+    
+    periodRapid = false;
        
     theta_0     = []; % filling function
     rho_0       = []; % density of particles
@@ -31,7 +33,7 @@ end % end private properties
 methods (Access = public)
     
     % constructor
-    function obj = GHDcorrelations(x_grid, rapid_grid, theta_0, rho_0, rhoS_0, a_eff0, GHDfunctionhandles)       
+    function obj = GHDcorrelations(x_grid, rapid_grid, theta_0, rho_0, rhoS_0, a_eff0, GHDfunctionhandles, periodRapid)       
         
         % Input GHDfunctionhandles as struct and copy fields into object properties.
         fn = fieldnames(GHDfunctionhandles);
@@ -47,6 +49,7 @@ methods (Access = public)
         obj.Ntypes      = size(theta_0,3);
         obj.x_grid      = x_grid;
         obj.rapid_grid  = rapid_grid;
+        obj.periodRapid = periodRapid;
         obj.a_eff0      = a_eff0;
         obj.theta_0     = theta_0;
         obj.rho_0       = rho_0;
@@ -61,8 +64,8 @@ methods (Access = public)
         [~, dudr_t] = gradient(double(u_t), 0, obj.rapid_grid, 0, 0, 0 ); %
         dudr_t      = GHDtensor( dudr_t );
 
-%         parfor y_index = 1:obj.M
-        for y_index = 1:obj.M
+        parfor y_index = 1:obj.M
+%         for y_index = 1:obj.M
 
             theta_0y    = atSpacePoint(obj.theta_0, y_index);
             f_0y        = obj.getStatFactor(theta_0y);
@@ -73,7 +76,7 @@ methods (Access = public)
             % Calculate source terms required for indirect propagator
             W2_temp    = atSpacePoint(obj.rhoS_0,y_index).*f_0y.*g_0y;  
             W2_temp_dr = obj.applyDressing( W2_temp, theta_0y, 0 ); 
-            W2_temp_sdr= W2_temp_dr - W2_temp; 
+            W2_temp_sdr= W2_temp_dr - W2_temp;
             
             W1         = 0;
             W3         = 0;
@@ -87,17 +90,17 @@ methods (Access = public)
                 rho_tx      = atSpacePoint(rho_t, x_index);
                 rhoS_tx     = atSpacePoint(rhoS_t, x_index);
                 cp_tx       = atSpacePoint(corr_prod, x_index);
-                g_tx        = atSpacePoint(g_t, x_index);
-                
+                g_tx        = atSpacePoint(g_t, x_index);                    
+               
+ 
                 gamma       = obj.findRootSet( u_tx, obj.x_grid(y_index), dudr_tx );
 
-                
                 % Calculate contribution from direct propagator
                 direct_temp = obj.interp2Gamma( cp_tx.*g_tx, gamma); % (1xG)
-                direct      = sum(double(direct_temp) ,1); % sum over gamma 
+                direct      = sum(sum(double(direct_temp) ,1) ,3); % sum over gamma (rapid1 and type1)
                 
                 % Calculate indirect propagator
-                W2          = - heaviside( double(u_tx) - obj.x_grid(y_index) ) .* W2_temp_sdr;
+                W2          = - heaviside( (double(u_tx) - obj.x_grid(y_index)) ) .* W2_temp_sdr;
                 [indirect, W1, W3] = obj.calcIndirectCorrelation(W1, W2, W3, gamma, theta_tx, rho_tx, rhoS_tx, u_tx, g_tx, cp_tx );
                 
                 corrMatCol(x_index,:,1) = direct;
@@ -128,9 +131,14 @@ methods (Access = private)
 
         
         % Update First source term, W1 
-        Kern    = 1/(2*pi) * obj.calcScatteringRapidDeriv( obj.rapid_grid, gamma );
-        Kern_dr = obj.applyDressing(Kern, theta_tx, 1);
-        W1      = W1 - delta_x*Kern_dr.*obj.interp2Gamma(corr_prod_x , gamma); 
+        if isempty(gamma)
+            integr = 0;
+        else
+            Kern    = 1/(2*pi) * obj.calcScatteringRapidDeriv( obj.rapid_grid, permute(gamma, [2 1 4 3]) );
+            Kern_dr = obj.applyDressing(Kern, theta_tx, 1);
+            integr  = Kern_dr*obj.interp2Gamma(corr_prod_x , gamma); % sum over gamma via multiplication (equal to sum over rapid2 and type2) 
+        end
+        W1      = W1 - delta_x*integr;
 
         
         % Solve for Delta
@@ -150,12 +158,10 @@ methods (Access = private)
 
         Delta   = Tmat\(W1+W2+W3); % Solve integral equation through iteration
 
-
         % IMPORTANT! update W3 for next step
         integr      = vec .* Delta;
         integr_sdr  = obj.applyDressing( integr, theta_tx, 1) - integr; % should be (1xNxM)
         W3          = W3 + delta_x*integr_sdr; 
-
         
         % Calculate indirect contribution via Delta
         indirect    = sum(trapz( obj.rapid_grid, double(Delta.*rho_tx.*f_tx.*g_tx) ,1), 3); % integrate over rapidity and sum over type
@@ -172,7 +178,7 @@ methods (Access = private)
         
         u_xt    = double(u_xt);
         du_xt   = double(du_xt);
-        gamma   = [];
+        gamma_c = cell(1, obj.Ntypes);
         
         for i = 1:obj.Ntypes
             % Turn u_xt into continuous, anonymous function for finding roots
@@ -188,22 +194,47 @@ methods (Access = private)
                 gamma_i = fzero(@(x) u_func(x) - y, 0);
             else
                 % Multiple members in root set. Use sign flip to gauge how
-                % many. 
+                % many there are. 
                 % NOTE: does not take into account u = y continuously
+                
+                % Check "bulk" of u_xt for crossings with y
+                signflip    = diff( u_xt(2:end-1,:,i) - y >=0 ) ~= 0; % logical N-3 length vector indicating signflips
+                
+                % Check if edge-points are equal to y
+                first       = abs( u_xt(1,:,i) - y ) < 1e-10;
+                last        = abs( u_xt(end,:,i) - y ) < 1e-10;
+                
+                rapid0      = obj.rapid_grid( [first ; signflip; false; last] ); % get root-rapidities
+                Nroots      = length( rapid0 ); % number of 1's in rapid0
+                gamma_i     = zeros(1,Nroots);
 
-                signflip    = diff( u_xt(:,:,i) - y >=0 ) ~= 0; % logical N-1 length vector indicating signflips
-                rapid0      = obj.rapid_grid( [signflip false] );
-                Nroots      = length(rapid0);
-                gamma_i       = zeros(1,Nroots);
-
-                for i = 1:Nroots
-                    gamma_i(i) = fzero(@(x) u_func(x) - y, rapid0(i));
+                for j = 1:Nroots
+                    gamma_i(j) = fzero(@(x) u_func(x) - y, rapid0(j));
                 end    
-
-                gamma_i       = unique(gamma_i);
+                
+                % Enforce periodic boundaries
+                rapid_min = obj.rapid_grid(1);
+                rapid_max = obj.rapid_grid(end);
+                if obj.periodRapid 
+                    gamma_i = mod(gamma_i + rapid_min, rapid_max-rapid_min) + rapid_min;
+                end
+                
+                % Enforce uniquesnes of roots
+                gamma_i     = unique(gamma_i);
             end
             
-            gamma(:,1,i) = gamma_i;
+            gamma_c{i} = gamma_i;
+        end
+        
+        % Some species might have more roots than others! To return gamma
+        % as matrix, one each gamma_i must have same length. Thus, fill
+        % with NaN to obtain equal length.
+        maxroots    = max( cellfun(@length, gamma_c) );
+        gamma       = NaN(maxroots, 1, obj.Ntypes);
+        
+        for i = 1:obj.Ntypes
+            Nroots      = length( gamma_c{i} );
+            gamma( 1:Nroots, :, i ) = gamma_c{i};
         end
     end
     
@@ -212,12 +243,19 @@ methods (Access = private)
         % gamma should be matrix of dimesions (G,1,Nt,1,M) 
         % NOTE: interp1 interpolates each column if ndims > 1
         
+        if isempty(gamma)
+            tensor_out = 0;
+            return
+        end
+        
         out_size    = size(tensor_in);
         out_size(1) = size(gamma,1);
         mat_out     = zeros(out_size);
         
         for i = 1:obj.Ntypes
-            mat_out(:,1,i,1,:) = interp1(obj.rapid_grid, tensor_in(:,:,i,:,:), gamma(:,:,i), 'spline');
+            int = interp1(obj.rapid_grid, tensor_in(:,:,i,:,:), gamma(:,:,i), 'spline');
+            int( isnan(int) ) = 0; % removes any NaN 
+            mat_out(:,1,i,1,:) = int;
         end
 
         if numel(mat_out) == 1 % mat_out is scalar

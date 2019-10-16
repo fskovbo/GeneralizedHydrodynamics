@@ -35,6 +35,9 @@ methods (Access = public)
         obj = obj@GeneralizedHydroSolver(x_grid, rapid_grid, couplings, Ntypes, stepOrder, extrapFlag);
         
         % XXZ model has in principle infinite species of quasi-particles
+        % and has periodic boundary conditions for rapidity
+        obj.periodRapid = true;
+        
     end
     
     
@@ -79,10 +82,23 @@ methods (Access = protected)
     
     function dT = calcScatteringRapidDeriv(obj, t, x, rapid1, rapid2, type1, type2)
         % Reshape input to right dimensions
-        rapid1  = reshape(rapid1, length(rapid1), 1); % rapid1 is 1st index
-        rapid2  = reshape(rapid2, 1, length(rapid2)); % rapid2 is 2nd index
-        type1   = reshape(type1, 1, 1, length(type1)); % type1 is 3rd index
-        type2   = reshape(type2, 1, 1, 1, length(type2)); % type2 is 4th index
+%         rapid1  = reshape(rapid1, length(rapid1), 1); % rapid1 is 1st index
+%         rapid2  = reshape(rapid2, 1, length(rapid2)); % rapid2 is 2nd index
+%         type1   = reshape(type1, 1, 1, length(type1)); % type1 is 3rd index
+%         type2   = reshape(type2, 1, 1, 1, length(type2)); % type2 is 4th index
+        
+        if size(rapid1,2) ~= 1  % rapid1 is 1st index
+            rapid1 = permute(rapid1, [2 1 3 4 5]); 
+        end
+        if size(rapid2,1) ~= 1  % rapid2 is 2nd index
+            rapid2 = permute(rapid2, [2 1 3 4 5]); 
+        end
+        if size(type1,4) ~= 1  % type1 is 3rd index
+            type1 = permute(type1, [1 2 4 3 5]); 
+        end
+        if size(type2,3) ~= 1  % type2 is 4th index
+            type2 = permute(type2, [1 2 4 3 5]); 
+        end
         
         % Calculate contribution from 2 first terms
         I_type  = repmat(eye(obj.Ntypes), 1 ,1, 1, 1);
@@ -99,9 +115,13 @@ methods (Access = protected)
         
         dT3 = zeros(size(dT1));
         for i = 1:obj.Ntypes
+            ri_idx = min( i, size(r_arg, 3) );
+            
             for j = 1:obj.Ntypes
+                rj_idx = min( j, size(r_arg, 4) );
+                
                 for n = (abs(i-j)+2):2:(i+j-2)
-                    temp = 2*obj.calcMomentumRapidDeriv(t, x, r_arg, n);
+                    temp = 2*obj.calcMomentumRapidDeriv(t, x, r_arg(:,:,ri_idx,rj_idx), n);
                     temp(isnan(temp)) = 0; % removes any NaN
                     dT3(:,:,i,j,:) = dT3(:,:,i,j,:) + temp;
                 end
@@ -149,7 +169,7 @@ methods (Access = protected)
     
     
     function dT = calcScatteringDeltaDeriv(obj, t, x, rapid1, rapid2, type1, type2)
-        % Reshape input to right dimensions
+        % Reshape input to right dimensions        
         rapid1  = reshape(rapid1, length(rapid1), 1); % rapid1 is 1st index
         rapid2  = reshape(rapid2, 1, length(rapid2)); % rapid2 is 2nd index
         type1   = reshape(type1, 1, 1, length(type1)); % type1 is 3rd index
@@ -219,8 +239,11 @@ methods (Access = protected)
         
         % Calculate acceleration from inhomogenous B-field. Note dmBdt
         % does not contribute as f = 0;
-        L_B     = repmat(type, obj.N, 1);
-        a_eff_B = obj.couplings.dBdx(t,x).*obj.applyDressing(L_B, theta, t);
+        a_eff_B = 0;
+        if ~isempty(obj.couplings.dBdx)
+            L_B     = repmat(type, obj.N, 1);
+            a_eff_B = obj.couplings.dBdx(t,x).*obj.applyDressing(L_B, theta, t);
+        end
         
         % Calculate acceleration from inhomogenous interaction
         a_eff_Delta = 0;

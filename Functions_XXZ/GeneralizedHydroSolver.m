@@ -28,6 +28,7 @@ properties (Access = protected)
     maxcount    = 100;
     stepOrder   = 0;
     extrapFlag  = false;
+    periodRapid = false;
 
 end % end protected properties
 
@@ -315,7 +316,7 @@ methods (Access = public)
         GHDeqs.getStatFactor            = @(theta) obj.getStatFactor(theta);
         
         % Initialize object for calculating the correlations
-        GHDcorr = GHDcorrelations(obj.x_grid, obj.rapid_grid, theta_0, rho_0, rhoS_0, a_eff0, GHDeqs);
+        GHDcorr = GHDcorrelations(obj.x_grid, obj.rapid_grid, theta_0, rho_0, rhoS_0, a_eff0, GHDeqs, obj.periodRapid);
         
         
         % Calculate state variables at correlation times.
@@ -357,7 +358,7 @@ methods (Access = public)
             C1P(:,1)    = q0;
             C1P(:,1+k)  = qt;
             
-            if areCurrents(1)
+            if areCurrents(1)                
                 g_t = g_t .* obj.calcEffectiveVelocities(theta_t{k}, tcorr_array(k), obj.x_grid, obj.rapid_grid, obj.type_grid);
                 C1P(:,1+k)  = jt;
             end
@@ -520,10 +521,14 @@ methods (Access = protected)
         x_g         = permute(obj.x_grid, [5 1 3 4 2]); % (M,N,Nt,1,1)
         rapid_g     = permute(obj.rapid_grid, [5 1 3 4 2]);
         
+        % Enforce periodic boundary conditions
+        if obj.periodRapid 
+            rapid_int = mod(rapid_int + obj.rapid_grid(1), obj.rapid_grid(end)-obj.rapid_grid(1)) + obj.rapid_grid(1);
+        end
+        
         % Get matrix representation of GHDtensor and pemute spacial index
         % to first.
         mat_grid    = permute(mat_grid, [5 1 3 4 2]);
-        
         mat_int     = zeros(obj.M, obj.N, obj.Ntypes);
         
         for i = 1:obj.Ntypes

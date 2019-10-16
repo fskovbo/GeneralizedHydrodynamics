@@ -214,12 +214,8 @@ methods (Access = public)
             end
             
             % Reverse the flatten()
-            % x will have dimensions (N*Nt,N2*Nt,M), where N2 = N or N2 = 1
-            % This must be reshaped back to (N,N2,Nt,Nt,M) 
-            size_C      = size(B);
-            size_C(5)   = max( size(A,5) , size(B,5) );
-            size_C( size_C == 0 ) = 1; % fill any missing indices
-            size_C      = permute(size_C , [1 3 2 4 5]); % make sure to permute indices, such that size_C = (N,Nt,N2,Nt,M)
+            size_C      = [ size(A,1), size(B,2), size(A,3), size(B,4), max(size(A,5),size(B,5))];
+            size_C([2 3])= size_C([3 2]); % make sure to permute indices, to reverse flatten
 
             % First split the type and rapidity indices by reshaping, then
             % permute to right positions
@@ -280,12 +276,10 @@ methods (Access = public)
         end
         
         % Reverse the flatten()
-        % x will have dimensions (N*Nt,N2*Nt,M), where N2 = N or N2 = 1
-        % This must be reshaped back to (N,N2,Nt,Nt,M) 
         size_C      = size(B);
         size_C(5)   = max( size(A,5) , size(B,5) );
         size_C( size_C == 0 ) = 1; % fill any missing indices
-        size_C([2 3])= size_C([2 3]); % make sure to permute indices, such that size_C = (N,Nt,N2,Nt,M)
+        size_C([2 3])= size_C([3 2]); % make sure to permute indices, to reverse flatten
             
         % First split the type and rapidity indices by reshaping, then
         % permute to right positions
