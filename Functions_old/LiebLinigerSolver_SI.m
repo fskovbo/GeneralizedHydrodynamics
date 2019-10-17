@@ -177,7 +177,7 @@ methods (Access = public)
         [theta_t, u_t] = obj.LLS.propagateTheta(theta_init, t_array);
         
         % Convert TBA --> SI
-%         u_t = obj.convert2SI(u_t, 'length');
+        u_t = obj.convert2SI(u_t, 'length');
     end
     
     

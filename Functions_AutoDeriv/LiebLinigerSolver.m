@@ -31,22 +31,17 @@ end % end private properties
 methods (Access = public)
         
     % Constructor
-    function obj = LiebLinigerSolver(x_grid, rapid_grid, couplings, stepOrder, extrapFlag)   
+    function obj = LiebLinigerSolver(x_grid, rapid_grid, couplings, Options)   
         % Set default parameters
         if nargin < 4
-            % Propagate theta using stepper of order X.
-            stepOrder = 2;
-        end
-        if nargin < 5
-            % Extrapolate theta when propagating (necessary for homogeneous states)
-            extrapFlag = false;
+            Options = struct;
         end
         
         % Lieb-Liniger model has 1 species of quasi-particles
         Ntypes = 1;
    
         % Call superclass constructor
-        obj = obj@GeneralizedHydroSolver(x_grid, rapid_grid, couplings, Ntypes, stepOrder, extrapFlag);
+        obj = obj@GeneralizedHydroSolver(x_grid, rapid_grid, couplings, Ntypes, Options);
     end
     
     
@@ -89,6 +84,53 @@ methods (Access = protected)
 
     function h_i = getOneParticleEV(obj, t, x, rapid, i)
         h_i = rapid.^i;
+    end
+    
+    
+    function [v_eff, a_eff] = calcEffectiveVelocities(obj, theta, t, x, rapid, type)        
+        % Overloads method, as acceleration from mu has much simpler
+        % expression than the general one.
+        de_dr   = obj.applyDressing(obj.calcEnergyRapidDeriv(t, x, rapid, type), theta, t);
+        dp_dr   = obj.applyDressing(obj.calcMomentumRapidDeriv(t, x, rapid, type), theta, t);
+        
+        v_eff   = de_dr./dp_dr;
+        
+        if obj.homoEvol % if homogeneous couplings, acceleration = 0
+            return
+        end
+        
+        % Calculate acceleration from inhomogenous potential. Note dmudt
+        % does not contribute as f = 0;
+        a_eff_mu = obj.couplingDerivs{2,1}(t,x);
+        if size(a_eff_mu,1) == 1
+            a_eff_mu = repmat(a_eff_mu, obj.N, 1); 
+        end
+        a_eff_mu = GHDtensor(a_eff_mu);
+        
+        % Calculate acceleration from inhomogenous interaction
+        a_eff_c = 0;
+        if ~isempty(obj.couplingDerivs{1,2}) || ~isempty(obj.couplingDerivs{2,2})
+            % Calculate derivative of scattering phase with respect to
+            % interaction c
+            delta_k = obj.rapid_grid(2) - obj.rapid_grid(1);            
+            dT      = obj.calcScatteringCouplingDeriv(2, t, x, rapid, obj.rapid_grid, type, obj.type_grid);
+            B       = delta_k/(2*pi) * dT.*transpose(theta);
+        end
+        
+        if ~isempty(obj.couplingDerivs{1,2}) % calc time deriv contribution
+            f       = B*dp_dr;
+            f_dr    = obj.applyDressing(f, theta, t);
+            a_eff_c = a_eff_c + obj.couplingDerivs{1,2}(t,x).*f_dr;
+        end
+
+        if ~isempty(obj.couplingDerivs{2,2}) % calc space deriv contribution
+            L       = B*de_dr;
+            L_dr    = obj.applyDressing(L, theta, t);
+            a_eff_c = a_eff_c + obj.couplingDerivs{2,2}(t,x).*L_dr;
+        end
+        
+        a_eff_c = a_eff_c./dp_dr;
+        a_eff   = a_eff_c + a_eff_mu;
     end
     
 

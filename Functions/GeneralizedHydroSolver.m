@@ -14,64 +14,155 @@ classdef GeneralizedHydroSolver < handle
     %
     % Thus, quantites have dimensions (1xNxM), while kernels have (NxNxM)
     
-properties (Access = protected)
-    M           = [];
-    N           = [];
-    rapid_grid  = [];
-    x_grid      = [];
+properties (Access = public)
+    % Grid lengths
+    M               = []; % number of spatial grid-points
+    N               = []; % number of rapidity grid-points
+    Ntypes          = []; % number of quasi-particle types
     
-    couplings   = [];
+    % Grids (all vectors)
+    rapid_grid      = [];
+    x_grid          = [];
+    type_grid       = [];
     
-    tolerance   = 1e-6;
-    maxcount    = 100;
-    stepOrder   = 0;
-    extrapFlag  = false;
+    % Cell array with anonymous functions
+    model           = []; % @(t,x,rapid,type) energy(first), momentum (second), and scattering (third)
+    couplings       = []; % @(t,x) coupling #i
+    couplingDerivs  = []; % @(t,x) coupling #i derivatives w.r.t. t (first row) and x (second row)
+    modelCoupDerivs = []; % @(t,x,rapid,type) derivatives of energy(first row), momentum (second row), and scattering (third row) w.r.t. couplings #i'th column
+    modelRapidDerivs= []; % @(t,x,rapid,type) derivatives of energy(first), momentum (second), and scattering (third ) w.r.t. rapidity
+    
+    % Optional parameters (default values specified here)
+    homoEvol        = false;    % Flag for homogeneous evolution (no acceleration)
+    tolerance       = 1e-6;     % Tolerance for TBA solution
+    maxcount        = 100;      % Max interations for TBA solution
+    stepOrder       = 2;        % Order of time step
+    extrapFlag      = false;    % Flag for using extrapolation during propagation (useful for open systems)
+    periodRapid     = false;    % Flag for periodic boundary conditions on rapidity
+    simplifySteps   = 100;      % Number of simplification steps used for auto-deriv
+    autoDerivFlag   = true;     % Flag for using auto-deriv. If false, all corresponding methods must be overloaded!
 
 end % end protected properties
 
 
+properties (Abstract, Access = protected)
+    % All these properties must be specified in the specific implementation
+    
+    % Formulas of model formated as strings
+    energy
+    momentum
+    scattering
+    
+    % Species of quasiparticle
+    quasiSpecies
+    
+    % Names of couplings in cell (must match model formulas)
+    couplingNames
+    
+end % end abstract properties
+
+
 methods (Abstract, Access = protected)
-
-    ebare   = getBareEnergy(obj, t, x, rapid);
-    pbare   = getBareMomentum(obj, t, x, rapid);
     
-    dT      = calcScatteringRapidDeriv(obj, t, x, rapid1, rapid2)
-    de      = calcEnergyRapidDeriv(obj, t, x, rapid)
-    dp      = calcMomentumRapidDeriv(obj, t, x, rapid)
-    
-    f       = getStatFactor(obj, theta)
-    h_i     = getOneParticleEV(obj, i, rapid)
-    theta   = calcFillingFraction(obj, e_eff)
+    h_i     = getOneParticleEV(obj, t, x, rapid, i)
 
-    [v_eff, a_eff] = calcEffectiveVelocities(obj, theta, t, x, rapid)
-  
 end % end protected abstract methods
 
 
 methods (Access = public)
     
     % Superclass constructor
-    function obj = GeneralizedHydroSolver(x_grid, rapid_grid, couplings, stepOrder, extrapFlag)        
-        % Check dimensionality of input
+    function obj = GeneralizedHydroSolver(x_grid, rapid_grid, couplings, Ntypes, Options)        
+        % Check format of input
         if ~isvector(x_grid) || ~isvector(rapid_grid)
             error('Input has wrong format!')
+        end
+        if ~iscell( couplings )
+            error('couplings must be cell array of anonymous functions!')
         end
         
         obj.N           = length(rapid_grid);
         obj.M           = length(x_grid);
-        obj.stepOrder   = stepOrder;
-        obj.extrapFlag  = extrapFlag;
+        obj.Ntypes      = Ntypes;
         
         % Reshape grids to right format
-        obj.x_grid      = reshape(x_grid, 1, 1, obj.M); % 3rd index is space
-        obj.rapid_grid  = reshape(rapid_grid, 1, obj.N); % 2nd index is rapidity
+        obj.x_grid      = reshape(x_grid, 1, 1, 1, 1, obj.M); % 5th index is space
+        obj.rapid_grid  = reshape(rapid_grid, obj.N, 1); % 1st index is rapidity
+        obj.type_grid   = reshape( 1:Ntypes, 1, 1, Ntypes ); % Types are 3rd index
         
+        % Copy fields of Options struct into class
+        if nargin > 4
+            fn = fieldnames(Options);
+            for i = 1:length(fn)                      
+                if isprop(obj, fn{i}) % only copy field if defined among properties
+                    eval(['obj.',fn{i},' = props.',fn{i},';']);
+                end
+            end
+        end
+        
+        
+        % Set couplings - must be done before calling formatFunction()
         obj.setCouplings(couplings);
+
+        
+        % Format model to anonymous functions
+        obj.model{1}    = obj.formatFunction(obj.energy, false);
+        obj.model{2}    = obj.formatFunction(obj.momentum, false);
+        obj.model{3}    = obj.formatFunction(obj.scattering, true);
+        
+        % Take derivatives of model w.r.t. rapidity and format to anonymous functions
+        if obj.autoDerivFlag
+            dedr = obj.takeDerivStr( obj.energy, 'rapid' );
+            dpdr = obj.takeDerivStr( obj.momentum, 'rapid' );
+            dTdr = obj.takeDerivStr( obj.scattering, 'rapid' );
+
+            obj.modelRapidDerivs{1} = obj.formatFunction(dedr, false);
+            obj.modelRapidDerivs{2} = obj.formatFunction(dpdr, false);
+            obj.modelRapidDerivs{3} = obj.formatFunction(dTdr, true);
+
+            % Take derrivatives of model w.r.t. couplings and format to anonymous functions
+            for i = 1:length(obj.couplingNames)
+                dedc = obj.takeDerivStr( obj.energy, obj.couplingNames{i} );
+                dpdc = obj.takeDerivStr( obj.momentum, obj.couplingNames{i} );
+                dTdc = obj.takeDerivStr( obj.scattering, obj.couplingNames{i} );
+
+                obj.modelCoupDerivs{1,i} = obj.formatFunction(dedc, false);
+                obj.modelCoupDerivs{2,i} = obj.formatFunction(dpdc, false);
+                obj.modelCoupDerivs{3,i} = obj.formatFunction(dTdc, true);
+            end
+        end
+        
     end
     
     
     function setCouplings(obj, couplings)
-        obj.couplings = couplings; 
+        % Sets couplings and computes couplingDerivs and modelCoupDerivs
+        if ~iscell( couplings )
+            error('couplings must be cell array of anonymous functions!')
+        end
+        
+        obj.couplings = couplings;
+        obj.couplingDerivs = cell(2, length(couplings));
+        
+        for i = 1:length(couplings)           
+            coup_str    = func2str( couplings{i} );
+            coup_str    = erase(coup_str, ' '); % erase spaces
+            coup_str    = erase(coup_str, '@(t,x)'); % erase function prefix
+            [dcdt, z1]  = obj.takeDerivStr( coup_str, 't' );
+            [dcdx, z2]  = obj.takeDerivStr( coup_str, 'x' );
+            
+            % If non-zero set derivs, otherwise leave empty
+            if ~z1; obj.couplingDerivs{1,i} = obj.formatFunction(dcdt, false); end
+            if ~z2; obj.couplingDerivs{2,i} = obj.formatFunction(dcdx, false); end
+        end
+        
+        % If all derivatives are empty (equal to 0), set flag for
+        % homogeneous evolution
+        if all(all( cellfun(@isempty, obj.couplingDerivs) ))
+            obj.homoEvol = true;
+        else
+            obj.homoEvol = false;
+        end
     end
     
     
@@ -85,20 +176,16 @@ methods (Access = public)
         % Simultaneously calculates characteristic function, u, used for
         % correlation functions.
         
-        % check dimensionality
-        if any(size(theta_init) ~= [1, obj.N, obj.M])
-            error('theta_init does not have the right format!')
-        end
-        
         Nsteps          = length(t_array) - 1;
         
-        theta_t         = zeros( 1, obj.N, obj.M, Nsteps+1 );
-        theta_t(:,:,:,1)= theta_init;
+        theta_t         = cell(1, Nsteps+1);
+        theta_t{1}      = theta_init;
         theta           = theta_init;
         
-        u_t             = zeros( 1, obj.N, obj.M, Nsteps+1 );
-        u_init          = repmat( obj.x_grid, 1, obj.N);
-        u_t(:,:,:,1)    = u_init;
+        u_t             = cell(1, Nsteps+1);
+        u_init          = GHDtensor( repmat( obj.x_grid, obj.N, 1, obj.Ntypes, 1) );
+        u_t{1}          = u_init;
+
         
         % Declare step as anonymous function according to stepOrder setting
         switch obj.stepOrder
@@ -107,7 +194,7 @@ methods (Access = public)
                 stepFunc    = @(th_aux, th_prev, u_prev, t, dt) obj.performFirstOrderStep(th_aux, th_prev, u_prev, t, dt);                              
                 
                 % Calculate initial theta_aux (here theta_guess)
-                theta_aux   = zeros(1, obj.N, obj.M);
+                theta_aux   = GHDtensor(obj.N, 1, obj.Ntypes, 1, obj.M);
                 u           = u_init;
                 
             case 2
@@ -119,7 +206,7 @@ methods (Access = public)
                 ddt         = dt/2/10;
                 theta_aux   = theta_init;
                 u           = u_init;
-                theta_guess = zeros(1, obj.N, obj.M);
+                theta_guess = GHDtensor(obj.N, 1, obj.Ntypes, 1, obj.M);
                 
                 % Calculate first theta_mid at dt/2 using first order step
                 for i = 1:10
@@ -141,8 +228,8 @@ methods (Access = public)
         for n = 1:Nsteps
             dt                  = t_array(n+1) - t_array(n);
             [theta, theta_aux, u] = stepFunc(theta_aux, theta, u, t_array(n), dt);
-            theta_t(:,:,:,n+1)  = theta;
-            u_t(:,:,:,n+1)      = u; 
+            theta_t{n+1}  = theta;
+            u_t{n+1}      = u; 
             
             % show progress
             cpb_text = sprintf('%d/%d steps evolved', n, Nsteps);
@@ -159,17 +246,16 @@ methods (Access = public)
         % NOTE: if couplings are time-dependent, t = 0 should be used for
         % units to stay fixed.
         
-        [i1, i2, i3 , i4] = size(theta);        
-
-        % check dimensionality
-        if i2 ~= obj.N || i1 ~= 1 || i3 ~= obj.M
-            error('theta does not have right format!')
-        end
-
-        rho     = zeros(size(theta));
-        rhoS    = zeros(size(theta));
-        for n = 1:i4 % Transform for each time step
-            theta_n = theta(:,:,:,n);
+        Nsteps  = length(theta); % number of time steps
+        rho     = cell(1,Nsteps);
+        rhoS    = cell(1,Nsteps);
+        for n = 1:Nsteps % Transform for each time step
+            
+            if Nsteps == 1
+                theta_n = theta;
+            else
+                theta_n = theta{n};
+            end
             
             if nargin < 3
                 t = 0;
@@ -177,11 +263,16 @@ methods (Access = public)
                 t = t_array(n);
             end
 
-            dp      = obj.calcMomentumRapidDeriv(t, obj.x_grid, obj.rapid_grid);
+            dp      = obj.calcMomentumRapidDeriv(t, obj.x_grid, obj.rapid_grid, obj.type_grid);
             dp_dr   = obj.applyDressing(dp, theta_n, t);
             
-            rhoS(:,:,:,n) = dp_dr/2/pi;
-            rho(:,:,:,n) = theta_n.*rhoS(:,:,:,n); 
+            rhoS{n} = 1/(2*pi) * dp_dr;
+            rho{n}  = theta_n.*rhoS{n}; 
+        end
+        
+        if Nsteps == 1
+            rho     = rho{1};
+            rhoS    = rhoS{1};
         end
     end
     
@@ -192,17 +283,15 @@ methods (Access = public)
         % NOTE: if couplings are time-dependent, t = 0 should be used for
         % units to stay fixed.
         
-        [i1, i2, i3 , i4] = size(rho);        
-
-        % check dimensionality
-        if i2 ~= obj.N || i1 ~= 1 || i3 ~= obj.M
-            error('theta does not have right format!')
-        end
-
-        theta   = zeros(size(rho));
-        rhoS    = zeros(size(rho));
-        for n = 1:i4 % Transform for each time step
-            rho_n = rho(:,:,:,n);
+        Nsteps  = length(rho); % number of time steps
+        theta   = cell(1,Nsteps);
+        rhoS    = cell(1,Nsteps);
+        for n = 1:Nsteps % Transform for each time step
+            if Nsteps == 1
+                rho_n = rho;
+            else
+                rho_n = rho{n};
+            end
             
             if nargin < 3
                 t = 0;
@@ -210,28 +299,37 @@ methods (Access = public)
                 t = t_array(n);
             end
 
-            dp      = obj.calcMomentumRapidDeriv(t, obj.x_grid, obj.rapid_grid);
-            dT      = obj.calcScatteringRapidDeriv(t, obj.x_grid, obj.rapid_grid, obj.rapid_grid);
-            delta_k = obj.rapid_grid(2) - obj.rapid_grid(1); 
+            delta_k = obj.rapid_grid(2) - obj.rapid_grid(1);
+            dp      = obj.calcMomentumRapidDeriv(t, obj.x_grid, obj.rapid_grid, obj.type_grid);
+            kernel  = delta_k/(2*pi) * obj.calcScatteringRapidDeriv(t, obj.x_grid, obj.rapid_grid, obj.rapid_grid, obj.type_grid, obj.type_grid); 
             
-            rhoS(:,:,:,n)  = (1/(2*pi)) * ( dp - delta_k*sum(dT.*permute(rho_n,[2 1 3]) , 1));
-            theta(:,:,:,n) = rho_n./rhoS(:,:,:,n);
+            rhoS{n} = dp/(2*pi) - kernel*rho_n;
+            theta{n}= rho_n./rhoS{n};
+        end
+        
+        if Nsteps == 1
+            theta   = theta{1};
+            rhoS    = rhoS{1};
         end
     end
     
-    
+
     function [q, j] = calcCharges(obj, theta, c_idx, t_array)
         % Calculate charges, q_i, and associated currents, j_i, where i is
         % entry in vector c_idx.
         
-        Nsteps  = size(theta,4); % number of time steps
+        Nsteps  = length(theta); % number of time steps
         Ncharg  = length(c_idx); 
         q       = zeros(obj.M, Nsteps, Ncharg);
         j       = zeros(obj.M, Nsteps, Ncharg);
-        dr      = obj.rapid_grid(2) - obj.rapid_grid(1);
+        delta_k = obj.rapid_grid(2) - obj.rapid_grid(1);
     
-        for i = 1:Nsteps 
-            theta_i = theta(:,:,:,i);
+        for i = 1:Nsteps
+            if Nsteps == 1
+                theta_i = theta;
+            else
+                theta_i = theta{i};
+            end
             
             if nargin < 4
                 t = 0;
@@ -239,15 +337,15 @@ methods (Access = public)
                 t = t_array(i);
             end
             
-            dp      = obj.calcMomentumRapidDeriv(t, obj.x_grid, obj.rapid_grid);
-            dE      = obj.calcEnergyRapidDeriv(t, obj.x_grid, obj.rapid_grid);
+            dp      = obj.calcMomentumRapidDeriv(t, obj.x_grid, obj.rapid_grid, obj.type_grid);
+            dE      = obj.calcEnergyRapidDeriv(t, obj.x_grid, obj.rapid_grid, obj.type_grid);
 
             for n = 1:Ncharg
-                hn          = obj.getOneParticleEV( c_idx(n), obj.rapid_grid);               
+                hn          = obj.getOneParticleEV( t, obj.x_grid, obj.rapid_grid, c_idx(n));               
                 hn_dr       = obj.applyDressing(hn, theta_i, t);
                 
-                q(:,i,n)    = dr/2/pi * reshape(reshape(permute(theta_i.*hn_dr,[2,1,3]),obj.N,[]).'*dp',obj.M,[]); % (M,1)
-                j(:,i,n)    = dr/2/pi * reshape(reshape(permute(theta_i.*hn_dr,[2,1,3]),obj.N,[]).'*dE',obj.M,[]); % (M,1)
+                q(:,i,n)    = delta_k/(2*pi) * squeeze(sum( sum( double(dp.*theta_i.*hn_dr) , 3) , 1)); % (M,1)
+                j(:,i,n)    = delta_k/(2*pi) * squeeze(sum( sum( double(dE.*theta_i.*hn_dr) , 3) , 1)); % (M,1)
             end
         end
     end
@@ -294,16 +392,16 @@ methods (Access = public)
         [rho_0, rhoS_0]     = obj.transform2rho(theta_0, 0);
         
         % Calculate "acceleration" i.e. degree of inhomogeniety of state
-        [~,~,dedx]          = gradient( e_eff, 0, 0, permute(obj.x_grid, [3 2 1]) );
-        a_eff0              = -dedx./(2*pi*rhoS_0);
+        [~,~,~,~,dedx]  = gradient( double(e_eff), 0, 0, 0, 0 , permute(obj.x_grid, [5 1 2 3 4]) );
+        a_eff0      = -dedx./(2*pi*rhoS_0);
         
         % Define all necessary functions for GHDcorrelations class
         GHDeqs.applyDressing            = @(Q, theta, t) obj.applyDressing(Q, theta, t);
-        GHDeqs.calcScatteringRapidDeriv = @(rapid1, rapid2) obj.calcScatteringRapidDeriv(1, obj.x_grid, rapid1, rapid2);
+        GHDeqs.calcScatteringRapidDeriv = @(rapid1, rapid2) obj.calcScatteringRapidDeriv(1, obj.x_grid, rapid1, rapid2, obj.type_grid, obj.type_grid);
         GHDeqs.getStatFactor            = @(theta) obj.getStatFactor(theta);
         
         % Initialize object for calculating the correlations
-        GHDcorr = GHDcorrelations(obj.x_grid, obj.rapid_grid, theta_0, rho_0, rhoS_0, a_eff0, GHDeqs);
+        GHDcorr = GHDcorrelations(obj.x_grid, obj.rapid_grid, theta_0, rho_0, rhoS_0, a_eff0, GHDeqs, obj.periodRapid);
         
         
         % Calculate state variables at correlation times.
@@ -317,15 +415,15 @@ methods (Access = public)
         
         % Time evolve theta_0
         [theta_t, u_t]  = obj.propagateTheta(theta_0, t_array);
-        theta_t         = theta_t(:,:,:,t_idx); % get theta at t = 0 and t in tcorr_array
-        u_t             = u_t(:,:,:,t_idx); 
+        theta_t         = theta_t(t_idx); % get theta at t = 0 and t in tcorr_array
+        u_t             = u_t(t_idx); 
         [rho_t, rhoS_t] = obj.transform2rho(theta_t, tcorr_array);
         
         
         % Calculate/prepare outputs
         [q0, j0]        = obj.calcCharges(theta_0, c_idx(2), 0);
         CM              = zeros(obj.M, obj.M, 2, length(tcorr_array));
-        theta           = cat(4, theta_0, theta_t);
+        theta           = [ {theta_0}, theta_t];
         C1P             = zeros(obj.M, length(tcorr_array) + 1);
          
         for k = 1:length(tcorr_array)
@@ -334,29 +432,29 @@ methods (Access = public)
             
             % Calculate g-functions, which will be acted on by the
             % correlation propagators.
-            hi = obj.getOneParticleEV(c_idx(1), obj.rapid_grid); % should be (1xN)
-            hj = obj.getOneParticleEV(c_idx(2), obj.rapid_grid);
+            hi = obj.getOneParticleEV(tcorr_array(k), obj.x_grid, obj.rapid_grid, c_idx(1)); % should be (1xN)
+            hj = obj.getOneParticleEV(0, obj.x_grid, obj.rapid_grid, c_idx(2));
 
-            g_t = obj.applyDressing( hi, theta_t(:,:,:,k), tcorr_array(k) ); % should be (1xNxM)
+            g_t = obj.applyDressing( hi, theta_t{k}, tcorr_array(k) ); % should be (1xNxM)
             g_0 = obj.applyDressing( hj, theta_0, 0 );
             
-            [qt, jt] = obj.calcCharges(theta_t(:,:,:,k), c_idx(1), tcorr_array(k));
+            [qt, jt] = obj.calcCharges(theta_t{k}, c_idx(1), tcorr_array(k));
             
             C1P(:,1)    = q0;
             C1P(:,1+k)  = qt;
             
             if areCurrents(1)
-                g_t = g_t .* obj.calcEffectiveVelocities(theta_t(:,:,:,k), tcorr_array(k), obj.x_grid, obj.rapid_grid);
+                g_t = g_t .* obj.calcEffectiveVelocities(theta_t{k}, tcorr_array(k), obj.x_grid, obj.rapid_grid, obj.type_grid);
                 C1P(:,1+k)  = jt;
             end
             if areCurrents(2)
-                g_0 = g_0 .* obj.calcEffectiveVelocities(theta_0, 0, obj.x_grid, obj.rapid_grid);
+                g_0 = g_0 .* obj.calcEffectiveVelocities(theta_0, 0, obj.x_grid, obj.rapid_grid, obj.type_grid);
                 C1P(:,1)    = j0;
             end
             
             
             % Calculate correlation matrix
-            CM(:,:,:,k) = GHDcorr.calcCorrelationMatrix(g_0, g_t, theta_t(:,:,:,k), rho_t(:,:,:,k), rhoS_t(:,:,:,k), u_t(:,:,:,k));
+            CM(:,:,:,k) = GHDcorr.calcCorrelationMatrix(g_0, g_t, theta_t{k}, rho_t{k}, rhoS_t{k}, u_t{k});
             
             toc
             fprintf('\n')
@@ -369,72 +467,254 @@ end % end public methods
 
 methods (Access = protected)
     
+    %% Functions for model functions and their derivatives
+    % This section containsFunctions for calculating model parameters
+    % (energy, momentum, scattering) along with their derivatives.
+    % Note, these functions all call anonymous functions stored in cell
+    % arrays, which are generated using the auto-differentiation feature.
+    % If this feature does not produce good functions, one can manually
+    % overload these functions in the specific implementation.
+    function ebare = getBareEnergy(obj, t, x, rapid, type)
+        % This function simply calls the appropriate anonnymous function
+        % stored in one of the cell arrays, and makes sure that the format
+        % adheres to convention.
+        % Is coded as function for clear name and overload posibility.
+        
+        ebare = obj.model{1}(t, x, rapid, type);
+        
+        if size(ebare, 1) == 1
+            ebare = repmat(ebare, obj.N, 1);
+        end
+    end
+    
+    
+    function pbare = getBareMomentum(obj, t, x, rapid, type)
+        % This function simply calls the appropriate anonnymous function
+        % stored in one of the cell arrays, and makes sure that the format
+        % adheres to convention.
+        % Is coded as function for clear name and overload posibility.
+        
+        pbare = obj.model{2}(t, x, rapid, type);
+        
+        if size(pbare, 1) == 1
+            pbare = repmat(pbare, obj.N, 1);
+        end
+    end
+    
+    
+    function de = calcEnergyRapidDeriv(obj, t, x, rapid, type)
+        % This function simply calls the appropriate anonnymous function
+        % stored in one of the cell arrays, and makes sure that the format
+        % adheres to convention.
+        % Is coded as function for clear name and overload posibility.
+        
+        de = obj.modelRapidDerivs{1}(t, x, rapid, type);
+        
+        if size(de, 1) == 1
+            de = repmat(de, obj.N, 1);
+        end
+    end
+
+    
+    function dp = calcMomentumRapidDeriv(obj, t, x, rapid, type)
+        % This function simply calls the appropriate anonnymous function
+        % stored in one of the cell arrays, and makes sure that the format
+        % adheres to convention.
+        % Is coded as function for clear name and overload posibility.
+        
+        dp = obj.modelRapidDerivs{2}(t, x, rapid, type);
+        
+        if size(dp, 1) == 1
+            dp = repmat(dp, obj.N, 1);
+        end
+    end
+    
+    
+    function dT = calcScatteringRapidDeriv(obj, t, x, rapid1, rapid2, type1, type2)
+        % This function simply calls the appropriate anonnymous function
+        % stored in one of the cell arrays, and makes sure that the format
+        % adheres to convention.
+        % Is coded as function for clear name and overload posibility.
+        
+        % Reshape input to right dimensions
+        rapid1  = reshape(rapid1, length(rapid1), 1); % rapid1 is 1st index
+        rapid2  = reshape(rapid2, 1, length(rapid2)); % rapid2 is 2nd index
+        type1   = reshape(type1, 1, 1, length(type1)); % type1 is 3rd index
+        type2   = reshape(type2, 1, 1, 1, length(type2)); % type2 is 4th index
+        
+        dT = obj.modelRapidDerivs{3}(t, x, rapid1, rapid2, type1, type2);
+        
+        dT(isnan(dT)) = 0; % removes any NaN
+        
+        dT = GHDtensor(dT); % Converts to GHDtensor
+    end
+    
+    
+    function de = calcEnergyCouplingDeriv(obj, coupIdx, t, x, rapid, type)
+        % This function simply calls the appropriate anonnymous function
+        % stored in one of the cell arrays, and makes sure that the format
+        % adheres to convention.
+        % Is coded as function for clear name and overload posibility.
+        
+        de = obj.modelCoupDerivs{1,coupIdx}(t, x, rapid, type);
+        
+        if size(de, 1) == 1
+            de = repmat(de, obj.N, 1);
+        end
+    end
+
+    
+    function dp = calcMomentumCouplingDeriv(obj, coupIdx, t, x, rapid, type)
+        % This function simply calls the appropriate anonnymous function
+        % stored in one of the cell arrays, and makes sure that the format
+        % adheres to convention.
+        % Is coded as function for clear name and overload posibility.
+        
+        dp = obj.modelCoupDerivs{2,coupIdx}(t, x, rapid, type);
+        
+        if size(dp, 1) == 1
+            dp = repmat(dp, obj.N, 1);
+        end
+    end
+    
+    
+    function dT = calcScatteringCouplingDeriv(obj, coupIdx, t, x, rapid1, rapid2, type1, type2)
+        % This function simply calls the appropriate anonnymous function
+        % stored in one of the cell arrays, and makes sure that the format
+        % adheres to convention.
+        % Is coded as function for clear name and overload posibility.
+        
+        % Reshape input to right dimensions
+        rapid1  = reshape(rapid1, length(rapid1), 1); % rapid1 is 1st index
+        rapid2  = reshape(rapid2, 1, length(rapid2)); % rapid2 is 2nd index
+        type1   = reshape(type1, 1, 1, length(type1)); % type1 is 3rd index
+        type2   = reshape(type2, 1, 1, 1, length(type2)); % type2 is 4th index
+        
+        dT = obj.modelCoupDerivs{3,coupIdx}(t, x, rapid1, rapid2, type1, type2);
+        
+        dT(isnan(dT)) = 0; % removes any NaN
+        
+        dT = GHDtensor(dT); % Converts to GHDtensor
+    end
+    
+    
+    function f = getStatFactor(obj, theta)
+        switch obj.quasiSpecies
+        case 'fermion'
+            f = 1 - theta;
+        case 'boson'
+            f = 1 + theta;
+        case 'classical'
+            f = 1;
+        case 'radiative'
+            f = theta;
+        otherwise
+            error(['Quasi-particle species ' obj.quasiSpecies ' is not implemented! Check spelling and cases!'])
+        end
+    end
+
+    
+    function F = getFreeEnergy(obj, e_eff)
+        switch obj.quasiSpecies
+        case 'fermion'
+            F = -log( 1 + exp(-e_eff));
+        case 'boson'
+            F = log( 1 - exp(-e_eff));
+        case 'classical'
+            F = -exp(-e_eff);
+        case 'radiative'
+            F = log( e_eff );
+        otherwise
+            error(['Quasi-particle species ' obj.quasiSpecies ' is not implemented! Check spelling and cases!'])
+        end 
+    end
+    
+    
+    %% Standard GHD equations used for the public functions
     function Q_dr = applyDressing(obj, Q, theta, t)
-        % Q must be defined on whole rapidity grid, but can depend on up to
-        % two rapidities. i.e. dim(Q) = (GxNxM) or (GxNx1)
-        % When performing dressing, it is most practical if second rapidity
-        % argument is second dimension (might change this to be consistent
-        % in all code in the future). Thus, within this method indices 1
-        % and 2 are considered permuted!!!
+        % Applies dressing to quantity Q. Q must have first index of
+        % dimension N!
         % NOTE: in correlation paper a distinction is made between vector
         % and scalar field. By these conventions T (diff scattering) is
         % symmetric, whereby scalar and vector fields are treated equally.
         
-        % Check dimensionalities
-        [d1, d2, d3] = size(Q);
-        if d2 ~= obj.N 
-            error('Quantity for dressing has wrong format!')
-        end
         
-        % Since we're working with permuted indices ...
-        Q = permute(Q, [2 1 3]);
-        
-        % Set flags for homogeniety
-        homo_state_flag     = 0; % is 1, if size(theta,3) == 1
-        homo_quant_flag     = 0; % is 1, if size(Q,3) == 1
-        if d3 == 1
-            homo_quant_flag = 1;
-        end
-        if size(theta,3) == 1
-            homo_state_flag = 1;
+        if ~isa(Q, 'GHDtensor')
+            Q = GHDtensor(Q);
         end
         
         % Calculate dressing operator
-        dk      = obj.rapid_grid(2) - obj.rapid_grid(1); 
-        kernel  = dk/2/pi*obj.calcScatteringRapidDeriv(t, obj.x_grid, obj.rapid_grid, obj.rapid_grid); % is symmetric
-        U       = eye(obj.N,obj.N) + kernel.*theta; % theta has been "transposed" - 2nd index is now 2nd rapid
+        delta_k = obj.rapid_grid(2) - obj.rapid_grid(1); 
+        kernel  = delta_k/2/pi*obj.calcScatteringRapidDeriv(t, obj.x_grid, obj.rapid_grid, obj.rapid_grid, obj.type_grid, obj.type_grid);
+        
+        I_rapid = eye(obj.N);
+        I_type  = repmat(eye(obj.Ntypes), 1 ,1, 1, 1);
+        I_type  = permute(I_type, [3 4 1 2]);
+        identity= I_rapid.*I_type;
+
+        U       = identity + kernel.*transpose(theta); 
         
         % We now have the equation Q = U*Q_dr. Therefore we solve for Q_dr
         % using the '\' operation.
-        if homo_quant_flag && homo_state_flag % both are homogeneous
-            Q_dr = U\Q;
-        elseif homo_state_flag && ~homo_quant_flag % only Q is inhomogeneous
-            Q_dr = zeros(d2, d1, d3);
+        Q_dr     = U\Q;
+           
+    end
+    
+    
+    function theta = calcFillingFraction(obj, e_eff)
+        switch obj.quasiSpecies
+        case 'fermion'
+            theta = 1./( exp(e_eff) + 1);
+        case 'boson'
+            theta = 1./( exp(e_eff) - 1);
+        case 'classical'
+            theta = exp(-e_eff);
+        case 'radiative'
+            theta = 1./exp(e_eff);
+        otherwise
+            error(['Quasi-particle species ' obj.quasiSpecies ' is not implemented! Check spelling and cases!'])
+        end
+    end
+    
+    
+    function [v_eff, a_eff] = calcEffectiveVelocities(obj, theta, t, x, rapid, type)        
+        % Calculates velocities
+        de_dr   = obj.applyDressing(obj.calcEnergyRapidDeriv(t, x, rapid, type), theta, t);
+        dp_dr   = obj.applyDressing(obj.calcMomentumRapidDeriv(t, x, rapid, type), theta, t);
+        
+        v_eff   = de_dr./dp_dr;
+         
+        % Calculate acceleration from inhomogenous couplings
+        a_eff   = 0;
+        
+        if obj.homoEvol % if homogeneous couplings, acceleration = 0
+            a_eff = GHDtensor( zeros(size( v_eff )) );
+            return
+        end
+        
+        % Calculate contribution for each coupling
+        for coupIdx = 1:length(obj.couplings)
+            delta_k = obj.rapid_grid(2) - obj.rapid_grid(1);            
+            dT      = obj.calcScatteringCouplingDeriv(coupIdx, t, x, rapid, obj.rapid_grid, type, obj.type_grid);
+            accKern = delta_k/(2*pi) * dT.*transpose(theta);
             
-            for i = 1:d3
-                Q_dr(:,:,i) = U\Q(:,:,i);
+            % if time deriv of coupling exist compute f
+            if ~isempty(obj.couplingDerivs{1,coupIdx}) 
+                f       = -obj.calcMomentumCouplingDeriv(coupIdx, t, x, rapid, type) + accKern*dp_dr;
+                f_dr    = obj.applyDressing(f, theta, t);
+                a_eff   = a_eff + obj.couplingDerivs{1,coupIdx}(t,x).*f_dr;
             end
-        elseif ~homo_state_flag && homo_quant_flag % only state is inhomogeneous
-            Q_dr = zeros(d2, d1, size(theta,3));
             
-            for i = 1:size(theta,3)
-                Q_dr(:,:,i) = U(:,:,i)\Q;
-            end
-        else % both are inhomogeneous
-            if d3 ~= size(theta,3)
-                error('Quantity and theta have conflicting size!')
-            end
-            
-            Q_dr = zeros(d2, d1, d3);
-            
-            for i = 1:d3
-                Q_dr(:,:,i) = U(:,:,i)\Q(:,:,i);
+            % if spacial deriv of coupling exist compute Lambda
+            if ~isempty(obj.couplingDerivs{2,coupIdx}) 
+                L       = -obj.calcEnergyCouplingDeriv(coupIdx, t, x, rapid, type) + accKern*de_dr;
+                L_dr    = obj.applyDressing(L, theta, t);
+                a_eff   = a_eff + obj.couplingDerivs{2,coupIdx}(t,x).*L_dr;
             end
         end
         
-        % Permute back to regular index convention
-        Q_dr = permute(Q_dr, [2 1 3]);
-           
+     
+        a_eff   = a_eff./dp_dr;
     end
     
     
@@ -442,20 +722,12 @@ methods (Access = protected)
         % Calculates the dressed energy per particle epsilon(k), from which the
         % preasure and later the filling factor theta can be derived.
         % This is achieved by iteratively solving the TBA equation.
-        ebare       = obj.getBareEnergy(t, x, obj.rapid_grid); % shoud be (1xNxM) % MIGHT REPLACE BACK TO RAPID INPUT LATER
-        dT          = obj.calcScatteringRapidDeriv(t, x, obj.rapid_grid, obj.rapid_grid );
         dk          = obj.rapid_grid(2) - obj.rapid_grid(1);
+        ebare       = obj.getBareEnergy(t, x, obj.rapid_grid, obj.type_grid); 
+        kernel      = dk/(2*pi)*obj.calcScatteringRapidDeriv(t, x, obj.rapid_grid, obj.rapid_grid, obj.type_grid, obj.type_grid );
         
-        % Need quantities in 3D format even if homogenous
-        if size(ebare,3) == 1
-            ebare = repmat(ebare, 1, 1, obj.M);
-        end
-        if size(dT,3) == 1
-            dT = repmat(dT, 1, 1, obj.M);
-        end
-        
-        e_eff       = zeros(1, obj.N, obj.M);
-        e_eff_old   = zeros(1, obj.N, obj.M);
+        e_eff       = GHDtensor(obj.N, 1, obj.Ntypes, 1, obj.M);
+        e_eff_old   = GHDtensor(obj.N, 1, obj.Ntypes, 1, obj.M);
         error_rel   = 1;
         count       = 0;
         
@@ -465,15 +737,15 @@ methods (Access = protected)
         while any(error_rel > obj.tolerance) & count < obj.maxcount % might change this
             
             % calculate epsilon(k) from integral equation using epsilonk_old
-            % i.e. update epsilon^[n] via epsilon^[n-1]
-            for i = 1:obj.M
-                % Transpose to column vector for matrix multiplication
-                e_eff(:,:,i) = ebare(:,:,i)/T + transpose(dk/2/pi*dT(:,:,i)*log( 1 + exp(-transpose(e_eff_old(:,:,i))) ));
-            end
+            % i.e. update epsilon^[n] via epsilon^[n-1]            
+            e_eff       = ebare./T - kernel*obj.getFreeEnergy(e_eff_old);
             
             % calculate error
-            sumeff      = sum( e_eff.^2 ,2);            
-            error_rel   = squeeze(sum( (e_eff - e_eff_old).^2 )./sumeff);
+            v1          = flatten(e_eff);
+            v2          = flatten(e_eff_old);
+            
+            sumeff      = sum( v1.^2 ,1);            
+            error_rel   = squeeze(sum( (v1 - v2).^2, 1)./sumeff);
             e_eff_old   = e_eff;
 
             count       = count+1;
@@ -481,9 +753,10 @@ methods (Access = protected)
     end
     
     
+    %% Time steppers and associated supporting functions
     function [theta_next, theta_tmp, u_next] = performFirstOrderStep(obj, theta, theta_prev, u_prev, t, dt)            
         % Use single Euler step
-        [v_eff, a_eff]  = obj.calcEffectiveVelocities(theta_prev, t, obj.x_grid, obj.rapid_grid); % should be (1xNxM)
+        [v_eff, a_eff]  = obj.calcEffectiveVelocities(theta_prev, t, obj.x_grid, obj.rapid_grid, obj.type_grid); % should be (1xNxM)
             
         x_back          = obj.x_grid - dt*v_eff;
         r_back          = obj.rapid_grid - dt*a_eff;
@@ -492,7 +765,7 @@ methods (Access = protected)
         % assign values to theta.
         theta_next      = obj.interpPhaseSpace(theta_prev, r_back, x_back, obj.extrapFlag);
         u_next          = obj.interpPhaseSpace(u_prev, r_back, x_back, true ); % always extrapolate u
-        theta_tmp       = zeros(1,obj.N,obj.M); % Unused outout for similarity to higher order steps       
+        theta_tmp       = zeros(obj.N,1,obj.Ntypes,1,obj.M); % Unused outout for similarity to higher order steps       
     end
     
     
@@ -509,7 +782,7 @@ methods (Access = protected)
         
         function [theta_next, u_next] = step2(obj, theta_mid, theta_prev, u_prev, t, dt)
             % Estimate x' and rapid' using midpoint filling
-            [v_eff, a_eff] = obj.calcEffectiveVelocities(theta_mid, t+dt/2, obj.x_grid, obj.rapid_grid);
+            [v_eff, a_eff] = obj.calcEffectiveVelocities(theta_mid, t+dt/2, obj.x_grid, obj.rapid_grid, obj.type_grid);
 
             x_mid   = obj.x_grid - 0.5*dt*v_eff; % (1xNxM)
             r_mid   = obj.rapid_grid - 0.5*dt*a_eff; % (1xNxM)
@@ -530,39 +803,122 @@ methods (Access = protected)
     end
     
     
-    function function_int = interpPhaseSpace(obj, function_grid, rapid_int, x_int, extrapFlag)
+    function tensor_int = interpPhaseSpace(obj, tensor_grid, rapid_int, x_int, extrapFlag)
         % This function exists because MATLAB has different syntax between
         % interp1 and interp2, and I want to choose whether i extrapolate
         % or not with a simple TRUE/FAlSE argument.
         % ASSUME function_grid is on x_grid and rapid_grid.
         % Returns function_int with same dimensions as input function_grid
         
+        % rapid_int and x_int should be (N,1,Nt,1,M)
+        
+        % Cast to matrix form
+        x_int       = double(x_int);
+        rapid_int   = double(rapid_int);
+        mat_grid    = double(tensor_grid); % should be (N,1,Nt,1,M)
+        
         % Need spacial dimension as first index in order to use (:) linearization
-        x_int       = permute(x_int, [3 2 1]);
-        rapid_int   = permute(rapid_int, [3 2 1]);
+        x_int       = permute(x_int, [5 1 3 4 2]); % (M,N,Nt,1,1)
+        rapid_int   = permute(rapid_int, [5 1 3 4 2]);
         
-        % Determine whether function must be permuted for interpolation
-        perm_flag = 0;
-        if size(function_grid,3) == obj.M
-            function_grid = permute(function_grid, [3 2 1]);
-            perm_flag = 1;
+        x_g         = permute(obj.x_grid, [5 1 3 4 2]); % (M,N,Nt,1,1)
+        rapid_g     = permute(obj.rapid_grid, [5 1 3 4 2]);
+        
+        % Enforce periodic boundary conditions
+        if obj.periodRapid 
+            rapid_int = mod(rapid_int + obj.rapid_grid(1), obj.rapid_grid(end)-obj.rapid_grid(1)) + obj.rapid_grid(1);
         end
+        
+        % Get matrix representation of GHDtensor and pemute spacial index
+        % to first.
+        mat_grid    = permute(mat_grid, [5 1 3 4 2]);
+        mat_int     = zeros(obj.M, obj.N, obj.Ntypes);
+        
+        for i = 1:obj.Ntypes
+            rapid_i = rapid_int(:,:,i);
+            x_i     = x_int(:,:,i);
+            mat_g   = mat_grid(:,:,i);   
             
-        
-        if extrapFlag
-            function_int = interp2( obj.rapid_grid, permute(obj.x_grid, [3 2 1]), function_grid, rapid_int(:), x_int(:), 'spline');
-        else
-            % Set all extrapolation values to zero!
-            function_int = interp2( obj.rapid_grid, permute(obj.x_grid, [3 2 1]), function_grid, rapid_int(:), x_int(:), 'spline', 0);
+            if extrapFlag
+                mat_tmp = interp2( rapid_g, x_g, mat_g, rapid_i(:), x_i(:), 'spline');
+            else
+                % Set all extrapolation values to zero!
+                mat_tmp = interp2( rapid_g, x_g, mat_g, rapid_i(:), x_i(:), 'spline', 0);
+            end
+           
+            mat_tmp = reshape(mat_tmp, obj.M, obj.N);
+            mat_int(:,:,i) = mat_tmp;
         end
         
-        % Returns output function to input dimensions
-        function_int = reshape(function_int, obj.M, obj.N);
-        if perm_flag
-            function_int = permute(function_int, [3 2 1]);
-        end
+        % Add dummy indices and reshape back to original indices
+        mat_int = permute(mat_int, [2 5 3 4 1] );
+        
+        tensor_int = GHDtensor(mat_int);
     end
   
+    
+    %% Functions for auto-derivatives
+    function [deriv_str, isZero] = takeDerivStr(obj, func_str, var_str)
+        % Takes a function formated as a string and output its derivative
+        % (with respect to the string variable var_str) as a string
+
+        % Convert to symbolics
+        func_sym    = str2sym( func_str );
+        var_sym     = str2sym( var_str );
+        deriv_sym   = diff( func_sym, var_sym );
+
+        % replace pi with placeholder symbolic, as simplify always treats pi as
+        % a numeric value
+        deriv_str   = char( deriv_sym );
+        deriv_str   = regexprep(deriv_str, 'pi', 'placeholder');
+        deriv_sym   = str2sym( deriv_str );
+
+        deriv_sym   = simplify( deriv_sym , 'Steps', obj.simplifySteps);
+
+        % If derivative is zero, return empty 
+        if isequal(deriv_sym, sym(0))
+            isZero = true;
+        else
+            isZero = false;
+        end
+
+        % Format back to string
+        deriv_str   = char( deriv_sym );
+        deriv_str   = regexprep(deriv_str, 'placeholder', 'pi');
+    end
+    
+    
+    function func = formatFunction(obj, func_str, isKernel)
+        % Takes a function formated as a string and outputs an anonymous function 
+          
+        % Replace operations with elementwise ones
+        func_str = regexprep(func_str, '*', '.*');
+        func_str = regexprep(func_str, '/', './');
+        func_str = regexprep(func_str, '\^', '\.^');
+        
+        % Replace all couplings with their expressions
+        for i = 1:length(obj.couplingNames)
+            coup_str = func2str( obj.couplings{i} );
+            coup_str = erase(coup_str, ' '); % erase spaces
+            coup_str = erase(coup_str, '@(t,x)'); % erase function prefix
+            coup_str = [ '(' coup_str ')' ]; % brace expression
+            func_str = regexprep(func_str, obj.couplingNames{i}, coup_str);
+        end
+        
+        if isKernel
+            func_str = regexprep(func_str, 'rapid', '(rapid1-rapid2)');
+            
+            % Add parameter prefix to string 
+            func_str = ['@(t, x, rapid1, rapid2, type1, type2) ' func_str];
+        else
+            % Add parameter prefix to string 
+            func_str = ['@(t, x, rapid, type) ' func_str];
+        end
+
+        % Convert to anonymous function 
+        func     = str2func(func_str);
+    end
+    
 end % end protected methods
 
 end % end classdef

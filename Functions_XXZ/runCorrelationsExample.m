@@ -11,7 +11,7 @@ xmax    = 5;
 T       = 5;
 
 stepOrder   = 2;
-extrapFlag = true;
+extrapFlag = false;
 dt      = 0.01; %0.025;
 
 

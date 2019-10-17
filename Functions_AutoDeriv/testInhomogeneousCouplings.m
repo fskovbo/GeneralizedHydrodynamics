@@ -20,9 +20,6 @@ k_array     = linspace(-kmax, kmax, N);
 x_array     = linspace(-xmax, xmax, M);
 t_array     = linspace(0, tmax, tmax/dt+1);
 
-stepOrder   = 2;
-extrapFlag  = false;
-
 
 %% Define physical couplings and temperature
 couplings1  = { @(t,x) 0.5 - 0.5*x.^2 , @(t,x) 0.3 + tanh(3*t) };

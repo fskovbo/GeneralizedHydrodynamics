@@ -1,6 +1,5 @@
 clear all; close all;
 
-addpath('..\Functions\')
 
 % Reproduces the results found in the paper:
 % "Generalized hydrodynamics with space-time inhomogeneous interactions".
@@ -63,19 +62,18 @@ n2_t        = LLS1.calcCharges(theta2_t, 0, t_array);
 
 %% ------------ Plot results -------------------
 
-
 % Initial state plot
 figure
 hold on
 subplot(2,2,1)
-imagesc(x_array,k_array, squeeze(theta1_init) )
+imagesc(x_array,k_array, squeeze(double(theta1_init)) )
 colormap(hot)
 caxis([ 0 1])
 set(gca,'YDir','normal') 
 title('Harmonic')
 
 subplot(2,2,2)
-imagesc(x_array,k_array, squeeze(theta2_init) )
+imagesc(x_array,k_array, squeeze(double(theta2_init)) )
 colormap(hot)
 caxis([ 0 1])
 set(gca,'YDir','normal') 
@@ -112,12 +110,13 @@ plottimes       = [0, 0.1, 6, 12];
 [~, t_idx]      = ismember(plottimes, t_array);
 
 
+
 %% Harmonic Pontential
 figure
 for i = 1:4
     subplot(2,4, i)
     index = t_idx(i);
-    imagesc(x_array,k_array,squeeze(theta1_t(:,:,:,index)))
+    imagesc(x_array,k_array, squeeze(double(theta1_t{index})) ) 
     colormap(hot)
     caxis([ 0 1])
     set(gca,'YDir','normal') 
@@ -149,7 +148,7 @@ figure
 for i = 1:4
     subplot(2,4, i)
     index = t_idx(i);
-    imagesc(x_array,k_array,squeeze(theta2_t(:,:,:,index)))
+    imagesc(x_array,k_array, squeeze(double(theta2_t{index})) )
     colormap(hot)
     caxis([ 0 1])
     set(gca,'YDir','normal') 

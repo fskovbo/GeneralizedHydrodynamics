@@ -28,16 +28,19 @@ properties (Access = public)
     % Cell array with anonymous functions
     model           = []; % @(t,x,rapid,type) energy(first), momentum (second), and scattering (third)
     couplings       = []; % @(t,x) coupling #i
-    couplingDerivs  = []; % @(t,x) coupling #i derivataives w.r.t. t (first row) and x (second row)
+    couplingDerivs  = []; % @(t,x) coupling #i derivatives w.r.t. t (first row) and x (second row)
     modelCoupDerivs = []; % @(t,x,rapid,type) derivatives of energy(first row), momentum (second row), and scattering (third row) w.r.t. couplings #i'th column
     modelRapidDerivs= []; % @(t,x,rapid,type) derivatives of energy(first), momentum (second), and scattering (third ) w.r.t. rapidity
     
-    % Simulation parameters
-    homoEvol        = false;
-    tolerance       = 1e-6;
-    maxcount        = 100;
-    stepOrder       = 0;
-    extrapFlag      = false;
+    % Optional parameters (default values specified here)
+    homoEvol        = false;    % Flag for homogeneous evolution (no acceleration)
+    tolerance       = 1e-6;     % Tolerance for TBA solution
+    maxcount        = 100;      % Max interations for TBA solution
+    stepOrder       = 2;        % Order of time step
+    extrapFlag      = false;    % Flag for using extrapolation during propagation (useful for open systems)
+    periodRapid     = false;    % Flag for periodic boundary conditions on rapidity
+    simplifySteps   = 100;      % Number of simplification steps used for auto-deriv
+    autoDerivFlag   = true;     % Flag for using auto-deriv. If false, all corresponding methods must be overloaded!
 
 end % end protected properties
 
@@ -68,7 +71,7 @@ end % end protected abstract methods
 methods (Access = public)
     
     % Superclass constructor
-    function obj = GeneralizedHydroSolver(x_grid, rapid_grid, couplings, Ntypes, stepOrder, extrapFlag)        
+    function obj = GeneralizedHydroSolver(x_grid, rapid_grid, couplings, Ntypes, Options)        
         % Check format of input
         if ~isvector(x_grid) || ~isvector(rapid_grid)
             error('Input has wrong format!')
@@ -80,40 +83,52 @@ methods (Access = public)
         obj.N           = length(rapid_grid);
         obj.M           = length(x_grid);
         obj.Ntypes      = Ntypes;
-        obj.stepOrder   = stepOrder;
-        obj.extrapFlag  = extrapFlag;
         
         % Reshape grids to right format
         obj.x_grid      = reshape(x_grid, 1, 1, 1, 1, obj.M); % 5th index is space
         obj.rapid_grid  = reshape(rapid_grid, obj.N, 1); % 1st index is rapidity
         obj.type_grid   = reshape( 1:Ntypes, 1, 1, Ntypes ); % Types are 3rd index
         
+        % Copy fields of Options struct into class
+        if nargin > 4
+            fn = fieldnames(Options);
+            for i = 1:length(fn)                      
+                if isprop(obj, fn{i}) % only copy field if defined among properties
+                    eval(['obj.',fn{i},' = props.',fn{i},';']);
+                end
+            end
+        end
+        
+        
         % Set couplings - must be done before calling formatFunction()
         obj.setCouplings(couplings);
+
         
         % Format model to anonymous functions
         obj.model{1}    = obj.formatFunction(obj.energy, false);
         obj.model{2}    = obj.formatFunction(obj.momentum, false);
         obj.model{3}    = obj.formatFunction(obj.scattering, true);
         
-        % Take derrivatives of model w.r.t. rapidity and format to anonymous functions
-        dedr = obj.takeDerivStr( obj.energy, 'rapid' );
-        dpdr = obj.takeDerivStr( obj.momentum, 'rapid' );
-        dTdr = obj.takeDerivStr( obj.scattering, 'rapid' );
-        
-        obj.modelRapidDerivs{1} = obj.formatFunction(dedr, false);
-        obj.modelRapidDerivs{2} = obj.formatFunction(dpdr, false);
-        obj.modelRapidDerivs{3} = obj.formatFunction(dTdr, true);
-        
-        % Take derrivatives of model w.r.t. couplings and format to anonymous functions
-        for i = 1:length(obj.couplingNames)
-            dedc = obj.takeDerivStr( obj.energy, obj.couplingNames{i} );
-            dpdc = obj.takeDerivStr( obj.momentum, obj.couplingNames{i} );
-            dTdc = obj.takeDerivStr( obj.scattering, obj.couplingNames{i} );
+        % Take derivatives of model w.r.t. rapidity and format to anonymous functions
+        if obj.autoDerivFlag
+            dedr = obj.takeDerivStr( obj.energy, 'rapid' );
+            dpdr = obj.takeDerivStr( obj.momentum, 'rapid' );
+            dTdr = obj.takeDerivStr( obj.scattering, 'rapid' );
 
-            obj.modelCoupDerivs{1,i} = obj.formatFunction(dedc, false);
-            obj.modelCoupDerivs{2,i} = obj.formatFunction(dpdc, false);
-            obj.modelCoupDerivs{3,i} = obj.formatFunction(dTdc, true);
+            obj.modelRapidDerivs{1} = obj.formatFunction(dedr, false);
+            obj.modelRapidDerivs{2} = obj.formatFunction(dpdr, false);
+            obj.modelRapidDerivs{3} = obj.formatFunction(dTdr, true);
+
+            % Take derrivatives of model w.r.t. couplings and format to anonymous functions
+            for i = 1:length(obj.couplingNames)
+                dedc = obj.takeDerivStr( obj.energy, obj.couplingNames{i} );
+                dpdc = obj.takeDerivStr( obj.momentum, obj.couplingNames{i} );
+                dTdc = obj.takeDerivStr( obj.scattering, obj.couplingNames{i} );
+
+                obj.modelCoupDerivs{1,i} = obj.formatFunction(dedc, false);
+                obj.modelCoupDerivs{2,i} = obj.formatFunction(dpdc, false);
+                obj.modelCoupDerivs{3,i} = obj.formatFunction(dTdc, true);
+            end
         end
         
     end
@@ -134,7 +149,7 @@ methods (Access = public)
             [dcdt, z1]  = obj.takeDerivStr( coup_str, 't' );
             [dcdx, z2]  = obj.takeDerivStr( coup_str, 'x' );
             
-            % If non-zero set derivs
+            % If non-zero set derivs, otherwise leave empty
             if ~z1; obj.couplingDerivs{1,i} = obj.formatFunction(dcdt, false); end
             if ~z2; obj.couplingDerivs{2,i} = obj.formatFunction(dcdx, false); end
         end
@@ -801,10 +816,14 @@ methods (Access = protected)
         x_g         = permute(obj.x_grid, [5 1 3 4 2]); % (M,N,Nt,1,1)
         rapid_g     = permute(obj.rapid_grid, [5 1 3 4 2]);
         
+        % Enforce periodic boundary conditions
+        if obj.periodRapid 
+            rapid_int = mod(rapid_int + obj.rapid_grid(1), obj.rapid_grid(end)-obj.rapid_grid(1)) + obj.rapid_grid(1);
+        end
+        
         % Get matrix representation of GHDtensor and pemute spacial index
         % to first.
         mat_grid    = permute(mat_grid, [5 1 3 4 2]);
-        
         mat_int     = zeros(obj.M, obj.N, obj.Ntypes);
         
         for i = 1:obj.Ntypes
@@ -845,7 +864,7 @@ methods (Access = protected)
         deriv_str   = regexprep(deriv_str, 'pi', 'placeholder');
         deriv_sym   = str2sym( deriv_str );
 
-        deriv_sym   = simplify( deriv_sym , 'Steps', 500);
+        deriv_sym   = simplify( deriv_sym , 'Steps', obj.simplifySteps);
 
         % If derivative is zero, return empty 
         if isequal(deriv_sym, sym(0))

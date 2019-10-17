@@ -1,4 +1,4 @@
-clear all; %close all;
+clear all; close all;
 
 addpath('..\Functions\')
 
@@ -12,9 +12,7 @@ xmax    = 5;
 
 T       = 5;
 
-stepOrder   = 2;
-extrapFlag = true;
-dt      = 0.01; %0.025;
+dt      = 0.01;
 
 
 k_array     = linspace(-kmax,kmax,N);
@@ -22,17 +20,10 @@ x_array     = linspace(-xmax,xmax,M);
 tcorr_array = 0.2:0.2:0.4;
 
 
-%% HOMOGENEOUS COUPLING
-couplings.mu    = @(t,x) 5;
-couplings.dmudx = @(t,x) 0;
-couplings.dmudt = [];
-couplings.c     = @(t,x) 1;
-couplings.dcdt  = [];
-couplings.dcdx  = [];
+%% Run simulations
+couplings   = { @(t,x) 5 , @(t,x) 1 };
 
-
-LLS             = LiebLinigerSolver(x_array, k_array, couplings, stepOrder, extrapFlag);
-
+LLS             = LiebLinigerSolver(x_array, k_array, couplings);
 
 c_idx           = [0, 0];
 areCurrents     = [0, 0];
@@ -42,11 +33,9 @@ c = 4;
 b = 5/c^4;
 a = 2*b*c^2;
 
-    
 coup_init       = couplings;
 % coup_init.mu    = @(t,x) a*x.^2 - b*x.^4;
-coup_init.mu    = @(t,x) 5 - 5*x.^2;
-
+coup_init{1}    = @(t,x) 5 - 5*x.^2;
 
 [corrmat, theta, C1P] = LLS.calcCorrelationMatrix(T, coup_init, tcorr_array, dt, c_idx, areCurrents);
 
