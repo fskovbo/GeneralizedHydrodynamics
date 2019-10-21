@@ -51,11 +51,11 @@ t_array     = linspace(0, tmax_si, Nsteps);
 
 %% Initialize state and solve dynamics for Harmonic Oscillator
 Vx_HO      = @(t,x) 0.5*m_si*omega_si^2 *x.^2;
-dVx_HO     = @(t,x) m_si*omega_si^2 *x;
+dmux_HO    = @(t,x) -m_si*omega_si^2 *x;
 
-couplings  = {  @(t,x) 0        , @(t,x) c_si   ;    % couplings
-                []              , []            ;    % d/dt
-                @(t,x) -dVx_HO  , []            };   % d/dx
+couplings  = {  @(t,x) 0            , @(t,x) c_si   ;    % couplings
+                []                  , []            ;    % d/dt
+                dmux_HO             , []            };   % d/dx
 
 
 LLS_HO      = LiebLinigerSolver_SI(omegaT_si, x_array, k_array, couplings, Options);
@@ -73,9 +73,9 @@ theta_t_HO  = LLS_HO.propagateTheta(theta_bragg, t_array);
 %% Initialize state and solve dynamics for Anharmonic Oscillator
 l_si        = 100*1e-6;
 Vx_AHO      = @(t,x) 1/pi^2 *omega_si^2 *l_si^2 *m_si* (1 - cos(pi*x/l_si));
-dVx_AHO     = @(t,x) l_si/pi*omega_si^2 *m_si* sin(pi*x/l_si);
+dmux_AHO    = @(t,x) -l_si/pi*omega_si^2 *m_si* sin(pi*x/l_si);
 
-couplings{3,1} = -dVx_AHO;
+couplings{3,1} = dmux_AHO;
 
 LLS_AHO     = LiebLinigerSolver_SI(omegaT_si, x_array, k_array, couplings, Options);
 mu0_fit     = LLS_AHO.fitAtomnumber(T_si, Vx_AHO, Natoms, true);
@@ -91,10 +91,10 @@ theta_t_AHO = LLS_AHO.propagateTheta(theta_bragg, t_array);
 
 %% Calculate quantities
 n_t_HO      = LLS_HO.calcCharges(theta_t_HO, 0, t_array) * 1e-6; % [um^-1]
-rho_t_HO    = 2*(hbar_si/m_si)*LLS_HO.transform2rho( theta_t_HO, t_array) * 1e9; % [ms/um^2]
+rho_t_HO    = LLS_HO.transform2rho( theta_t_HO, t_array); 
 
 n_t_AHO     = LLS_AHO.calcCharges(theta_t_AHO, 0, t_array) * 1e-6; % [um^-1]
-rho_t_AHO   = 2*(hbar_si/m_si)*LLS_AHO.transform2rho( theta_t_AHO, t_array) * 1e9; % [ms/um^2]
+rho_t_AHO   = LLS_AHO.transform2rho( theta_t_AHO, t_array);
 
 
 %% Plot results
@@ -103,12 +103,12 @@ figure
 for i = 1:6
     index = ceil( (length(t_array)-1)/5*(i-1) + 1 );
     
-    rho_i_HO = rho_t_HO{index};
-    rho_i_AHO = rho_t_AHO{index};
+    rho_i_HO = 2*(hbar_si/m_si)*rho_t_HO{index}* 1e9; % [ms/um^2]
+    rho_i_AHO = 2*(hbar_si/m_si)*rho_t_AHO{index}* 1e9; % [ms/um^2]
     
     % plot Harmonic quasiparticle distribution
     subplot(3,6,i)
-    imagesc(x_array*1e6, v_array*1e3,squeeze(rho_i_HO))
+    imagesc(x_array*1e6, v_array*1e3,squeeze(double(rho_i_HO)))
     set(gca,'YDir','normal')
     colormap(hot)
     caxis([0 0.36])
@@ -118,7 +118,7 @@ for i = 1:6
     
     % plot Anharmonic quasiparticle distribution
     subplot(3,6,i+6)
-    imagesc(x_array*1e6, v_array*1e3,squeeze(rho_i_AHO))
+    imagesc(x_array*1e6, v_array*1e3,squeeze(double(rho_i_AHO)))
     set(gca,'YDir','normal')
     colormap(hot)
     caxis([0 0.36])

@@ -89,6 +89,15 @@ methods (Access = public)
                 % space derivatives
                 quantity_tba{3,1} = @(t, x) quantity_si{3,1}( t*obj.t_si, x*obj.Lg_si )/obj.Eg_si*obj.Lg_si; 
                 quantity_tba{3,2} = @(t, x) quantity_si{3,2}( t*obj.t_si, x*obj.Lg_si )*obj.Lg_si*obj.Lg_si; 
+                
+                % Make sure empty couplings stay empty!  
+                for i = 1:size(quantity_si,1)
+                    for j = 1:size(quantity_si,2)
+                        if isempty( quantity_si{i,j} )
+                            quantity_tba{i,j} = [];
+                        end
+                    end
+                end
             otherwise
                 error('Conversion of specified unit is not implemented!')
         end 
@@ -121,6 +130,15 @@ methods (Access = public)
                 % space derivatives
                 quantity_si{3,1} = @(t, x) quantity_tba{3,1}( t/obj.t_si, x/obj.Lg_si )*obj.Eg_si/obj.Lg_si; 
                 quantity_si{3,2} = @(t, x) quantity_tba{3,2}( t/obj.t_si, x/obj.Lg_si )/obj.Lg_si/obj.Lg_si; 
+                
+                % Make sure empty couplings stay empty!  
+                for i = 1:size(quantity_si,1)
+                    for j = 1:size(quantity_si,2)
+                        if isempty( quantity_tba{i,j} )
+                            quantity_si{i,j} = [];
+                        end
+                    end
+                end
             otherwise
                 error('Conversion of specified unit is not implemented!')
         end 
@@ -130,8 +148,7 @@ methods (Access = public)
     function mu0_fit = fitAtomnumber(obj, T, V_ext, Natoms, setCouplingFlag)
         % Convert SI --> TBA
         T       = obj.convert2TBA(T, 'temperature');
-        V_ext   = obj.convertFunction( V_ext, 1/obj.Eg_si, [ obj.t_si, obj.Lg_si ]);
-%         V_ext   = @(t, x) V_ext( t*obj.t_si, x*obj.Lg_si )/obj.Eg_si;
+        V_ext   = @(t, x) V_ext( t*obj.t_si, x*obj.Lg_si )/obj.Eg_si;
         
         % Run LLS function
         mu0_fit = obj.LLS.fitAtomnumber(T, V_ext, Natoms, setCouplingFlag);
