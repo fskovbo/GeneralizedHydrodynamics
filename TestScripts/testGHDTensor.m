@@ -1,5 +1,9 @@
 clear all; clc;
 
+addpath('..\functions\')
+
+%%
+
 hej = reshape(1:24, 3, 4 , 2)
 
 test = GHDtensor(hej);

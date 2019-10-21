@@ -6,6 +6,8 @@ clear all; close all;
 % (http://arxiv.org/abs/1906.01654)
 
 
+addpath('..\Functions\')
+
 %% Define simulation parameters
 
 N           = 2^7;
@@ -20,28 +22,12 @@ k_array     = linspace(-kmax, kmax, N);
 x_array     = linspace(-xmax, xmax, M);
 t_array     = linspace(0, tmax, tmax/dt+1);
 
-stepOrder   = 2;
-extrapFlag  = false;
-
 
 %% Define physical couplings and temperature
-couplings1.mu    = @(t,x) 0.5 - 0.5*x.^2 ; 
-couplings1.dmudx = @(t,x) -x;
-couplings1.dmudt = [];
-couplings1.c     = @(t,x) 0.3 + tanh(3*t);
-couplings1.dcdt  = @(t,x) 3*sech(3*t)^2;
-couplings1.dcdx  = [];
+couplings1  = { @(t,x) 0.5 - 0.5*x.^2 , @(t,x) 0.3 + tanh(3*t) };
+couplings2  = { @(t,x) 0.5 - 0.5*x.^4 , @(t,x) 0.3 + tanh(3*t) };
 
-
-couplings2.mu    = @(t,x) 0.5 - 0.5*x.^4 ; 
-couplings2.dmudx = @(t,x) -2*x.^3;
-couplings2.dmudt = [];
-couplings2.c     = @(t,x) 0.3 + tanh(3*t);
-couplings2.dcdt  = @(t,x) 3*sech(3*t)^2;
-couplings2.dcdx  = [];
-
-
-T               = 0.5;
+T           = 0.5;
 
 
 %% Initialize state and solve dynamics

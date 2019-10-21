@@ -5,6 +5,8 @@
 
 clear all; close all;
 
+addpath('..\Functions\')
+
 %% Define simulation parameters
 
 N           = 2^7;
@@ -20,26 +22,17 @@ k_array     = linspace(-kmax, kmax, N);
 x_array     = linspace(-xmax, xmax, M);
 t_array     = linspace(0, tmax, tmax/dt+2);
 
-stepOrder   = 2;
-extrapFlag  = true;
-
 
 T           = 0.25;
 
 %% Define physical couplings
-couplings.B         = @(t,x) -1; 
-couplings.dBdx      = [];
-couplings.dBdt      = [];
-couplings.Delta     = @(t,x) 1.5;
-couplings.dDeltadt  = [];
-couplings.dDeltadx  = [];
+couplings       = { @(t,x) -1 , @(t,x) acosh(1.5) };
 
-
-coup_init           = couplings;
-coup_init.B         = @(t,x) -1 - 8*x.^2; 
+coup_init       = couplings;
+coup_init{1}    = @(t,x) -1 - 8*x.^2; 
 
 %% Run simulation
-XXZ         = XXZchainSolver(x_array, k_array, couplings, Ntypes, stepOrder, extrapFlag);
+XXZ         = XXZchainSolver(x_array, k_array, couplings, Ntypes);
 theta_init  = XXZ.calcThermalState(T, coup_init);
 
 

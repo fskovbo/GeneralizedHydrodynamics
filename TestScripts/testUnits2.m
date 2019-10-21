@@ -24,6 +24,8 @@ xmax_si     = 70*1e-6;
 vmax_si     = 35*1e-3;
 tmax_si     = 13*1e-3;
 
+Options.autoDerivCoup = false;
+
 %% Experimental units
 
 m_si        = 87*1.6605402e-27;
@@ -48,17 +50,15 @@ t_array     = linspace(0, tmax_si, Nsteps);
 
 
 %% Initialize state and solve dynamics for Harmonic Oscillator
-Vx_HO      = @(t,x) 0.5*m_si*omega_si^2*x.^2;
+Vx_HO      = @(t,x) 0.5*m_si*omega_si^2 *x.^2;
+dVx_HO     = @(t,x) m_si*omega_si^2 *x;
 
-couplings.mu    = @(t,x) 0;
-couplings.dmudx = @(t,x) -m_si*omega_si^2*x;
-couplings.c     = @(t,x) c_si;
-couplings.dcdt  = [];
-couplings.dcdx  = [];
-couplings.dmudt = [];
+couplings  = {  @(t,x) 0        , @(t,x) c_si   ;    % couplings
+                []              , []            ;    % d/dt
+                @(t,x) -dVx_HO  , []            };   % d/dx
 
 
-LLS_HO      = LiebLinigerSolver_SI(omegaT_si, x_array, k_array, couplings);
+LLS_HO      = LiebLinigerSolver_SI(omegaT_si, x_array, k_array, couplings, Options);
 mu0_fit     = LLS_HO.fitAtomnumber(T_si, Vx_HO, Natoms, true);
 
 
@@ -73,16 +73,11 @@ theta_t_HO  = LLS_HO.propagateTheta(theta_bragg, t_array);
 %% Initialize state and solve dynamics for Anharmonic Oscillator
 l_si        = 100*1e-6;
 Vx_AHO      = @(t,x) 1/pi^2 *omega_si^2 *l_si^2 *m_si* (1 - cos(pi*x/l_si));
+dVx_AHO     = @(t,x) l_si/pi*omega_si^2 *m_si* sin(pi*x/l_si);
 
-couplings.mu    = @(t,x) 0;
-couplings.dmudx = @(t,x) -l_si/pi*omega_si^2 *m_si* sin(pi*x/l_si);
-couplings.c     = @(t,x) c_si;
-couplings.dcdt  = [];
-couplings.dcdx  = [];
-couplings.dmudt = [];
+couplings{3,1} = -dVx_AHO;
 
-
-LLS_AHO     = LiebLinigerSolver_SI(omegaT_si, x_array, k_array, couplings);
+LLS_AHO     = LiebLinigerSolver_SI(omegaT_si, x_array, k_array, couplings, Options);
 mu0_fit     = LLS_AHO.fitAtomnumber(T_si, Vx_AHO, Natoms, true);
 
 theta_init  = LLS_AHO.calcThermalState(T_si);
@@ -95,7 +90,7 @@ theta_t_AHO = LLS_AHO.propagateTheta(theta_bragg, t_array);
 
 
 %% Calculate quantities
-n_t_HO      = LLS_HO.calcCharges(theta_t_HO, 0, t_array) * 1e-6; % [um^-1]* 1e9; % [ms/um^2]
+n_t_HO      = LLS_HO.calcCharges(theta_t_HO, 0, t_array) * 1e-6; % [um^-1]
 rho_t_HO    = 2*(hbar_si/m_si)*LLS_HO.transform2rho( theta_t_HO, t_array) * 1e9; % [ms/um^2]
 
 n_t_AHO     = LLS_AHO.calcCharges(theta_t_AHO, 0, t_array) * 1e-6; % [um^-1]
@@ -108,9 +103,12 @@ figure
 for i = 1:6
     index = ceil( (length(t_array)-1)/5*(i-1) + 1 );
     
+    rho_i_HO = rho_t_HO{index};
+    rho_i_AHO = rho_t_AHO{index};
+    
     % plot Harmonic quasiparticle distribution
     subplot(3,6,i)
-    imagesc(x_array*1e6, v_array*1e3,squeeze(rho_t_HO(:,:,:,index)))
+    imagesc(x_array*1e6, v_array*1e3,squeeze(rho_i_HO))
     set(gca,'YDir','normal')
     colormap(hot)
     caxis([0 0.36])
@@ -120,7 +118,7 @@ for i = 1:6
     
     % plot Anharmonic quasiparticle distribution
     subplot(3,6,i+6)
-    imagesc(x_array*1e6, v_array*1e3,squeeze(rho_t_AHO(:,:,:,index)))
+    imagesc(x_array*1e6, v_array*1e3,squeeze(rho_i_AHO))
     set(gca,'YDir','normal')
     colormap(hot)
     caxis([0 0.36])
@@ -146,7 +144,7 @@ end
 %% ------------------------------------------------
 function theta_bragg = applyBraggPulse(theta, k_Bragg, dk, LLS)
     rho         = LLS.transform2rho(theta);
-    rho_shift   = circshift(permute(rho/2, [3 2 1]), [0, round(k_Bragg/dk)]);
-    rho_bragg   = permute(rho_shift + fliplr(rho_shift) , [3 2 1]);
+    rho_shift   = circshift( double(rho)/2, [round(k_Bragg/dk), 0]);
+    rho_bragg   = GHDtensor( rho_shift + flipud(rho_shift) );
     theta_bragg = LLS.transform2theta(rho_bragg);
 end

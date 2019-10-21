@@ -17,8 +17,10 @@ methods (Access = public)
     % Constructor
     function obj = GHDtensor(varargin)
         % Determine whether input is a matrix of list of dimensions
-        if ~isscalar(varargin{1}) % input is matrix
+        if length(varargin) == 1 && ~isscalar(varargin{1}) % input is matrix
             obj.matrix = varargin{1};
+        elseif length(varargin) == 1 && varargin{1} == 0 % input is the scalar 0
+            obj.matrix = zeros(1);
         else
             obj.matrix = zeros(varargin{:});
         end
@@ -188,13 +190,11 @@ methods (Access = public)
         else
             % Assumes both objects are GHD tensors
         
-            a = flatten(A);
-            b = flatten(B);
+            a   = flatten(A);
+            b   = flatten(B);
 
-            xsize = size(b);
-            xsize(3) = max( size(a,3), size(b,3) );
-            x = zeros(xsize);
-
+            xsize = [ size(a,1), size(b,2), max(size(a,3),size(b,3)) ];
+            x   = zeros(xsize);
 
             if size(a,3) == 1 && size(b,3) == 1 % both homogeneous
                 x = mtimes(a,b);
@@ -251,12 +251,9 @@ methods (Access = public)
         % This function assumes both objects are GHD tensors
         a = flatten(A);
         b = flatten(B);
-        
-        
-        xsize = size(b);
-        xsize(3) = max( size(a,3), size(b,3) );
-        x = zeros(xsize);
-        
+         
+        xsize = [ size(a,2), size(b,2), max(size(a,3),size(b,3)) ];
+        x   = zeros(xsize);
         
         if size(a,3) == 1 && size(b,3) == 1 % both homogeneous
             x = mldivide(a,b);

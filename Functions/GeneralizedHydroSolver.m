@@ -40,7 +40,8 @@ properties (Access = public)
     extrapFlag      = false;    % Flag for using extrapolation during propagation (useful for open systems)
     periodRapid     = false;    % Flag for periodic boundary conditions on rapidity
     simplifySteps   = 100;      % Number of simplification steps used for auto-deriv
-    autoDerivFlag   = true;     % Flag for using auto-deriv. If false, all corresponding methods must be overloaded!
+    autoDerivModel  = true;     % Flag for using auto-deriv of model functions. If false, all corresponding methods must be overloaded!
+    autoDerivCoup   = true; 	% Flag for using auto-deriv of couplings. If false, all couplings must be passed!
 
 end % end protected properties
 
@@ -95,23 +96,56 @@ methods (Access = public)
             fn = fieldnames(Options);
             for i = 1:length(fn)                      
                 if isprop(obj, fn{i}) % only copy field if defined among properties
-                    eval(['obj.',fn{i},' = props.',fn{i},';']);
+                    eval(['obj.',fn{i},' = Options.',fn{i},';']);
                 end
             end
         end
         
-        
-        % Set couplings - must be done before calling formatFunction()
+        % Fill out cell arrays with anonymous functions
         obj.setCouplings(couplings);
-
         
-        % Format model to anonymous functions
+    end
+    
+    
+    function setCouplings(obj, couplings)
+        % Sets couplings and computes all cell arrays with anonymous
+        % founctions.
+        if ~iscell( couplings )
+            error('couplings must be cell array of anonymous functions!')
+        end
+        assert(size(couplings, 2) == length(obj.couplingNames))
+        
+        obj.couplings = couplings(1,:);
+        
+        
+        if ~obj.autoDerivCoup
+            % Derivatives of coupling are passed along with couplings
+            obj.couplingDerivs = couplings([2,3],:);
+        else
+            % Calculate derivatives of couplings w.r.t. x and t
+            obj.couplingDerivs = cell(2, length(couplings));
+
+            for i = 1:length(couplings)           
+                coup_str    = func2str( couplings{i} );
+                coup_str    = erase(coup_str, ' '); % erase spaces
+                coup_str    = erase(coup_str, '@(t,x)'); % erase function prefix
+                [dcdt, z1]  = obj.takeDerivStr( coup_str, 't' );
+                [dcdx, z2]  = obj.takeDerivStr( coup_str, 'x' );
+
+                % If non-zero set derivs, otherwise leave empty
+                if ~z1; obj.couplingDerivs{1,i} = obj.formatFunction(dcdt, false); end
+                if ~z2; obj.couplingDerivs{2,i} = obj.formatFunction(dcdx, false); end
+            end
+        end
+        
+        
+        % Format model functions to anonymous functions
         obj.model{1}    = obj.formatFunction(obj.energy, false);
         obj.model{2}    = obj.formatFunction(obj.momentum, false);
         obj.model{3}    = obj.formatFunction(obj.scattering, true);
         
         % Take derivatives of model w.r.t. rapidity and format to anonymous functions
-        if obj.autoDerivFlag
+        if obj.autoDerivModel
             dedr = obj.takeDerivStr( obj.energy, 'rapid' );
             dpdr = obj.takeDerivStr( obj.momentum, 'rapid' );
             dTdr = obj.takeDerivStr( obj.scattering, 'rapid' );
@@ -132,31 +166,8 @@ methods (Access = public)
             end
         end
         
-    end
-    
-    
-    function setCouplings(obj, couplings)
-        % Sets couplings and computes couplingDerivs and modelCoupDerivs
-        if ~iscell( couplings )
-            error('couplings must be cell array of anonymous functions!')
-        end
         
-        obj.couplings = couplings;
-        obj.couplingDerivs = cell(2, length(couplings));
-        
-        for i = 1:length(couplings)           
-            coup_str    = func2str( couplings{i} );
-            coup_str    = erase(coup_str, ' '); % erase spaces
-            coup_str    = erase(coup_str, '@(t,x)'); % erase function prefix
-            [dcdt, z1]  = obj.takeDerivStr( coup_str, 't' );
-            [dcdx, z2]  = obj.takeDerivStr( coup_str, 'x' );
-            
-            % If non-zero set derivs, otherwise leave empty
-            if ~z1; obj.couplingDerivs{1,i} = obj.formatFunction(dcdt, false); end
-            if ~z2; obj.couplingDerivs{2,i} = obj.formatFunction(dcdx, false); end
-        end
-        
-        % If all derivatives are empty (equal to 0), set flag for
+        % If all coupling derivatives are empty (equal to 0), set flag for
         % homogeneous evolution
         if all(all( cellfun(@isempty, obj.couplingDerivs) ))
             obj.homoEvol = true;
@@ -167,7 +178,12 @@ methods (Access = public)
     
     
     function couplings = getCouplings(obj)
-        couplings = obj.couplings;
+        if obj.autoDerivCoup
+            couplings = obj.couplings;
+        else
+            % Include derivatives
+            couplings = {obj.couplings ; obj.couplingDerivs};
+        end
     end
     
     
@@ -358,14 +374,16 @@ methods (Access = public)
         
         if nargin == 3 % use input TBA_couplings
             couplings_old = obj.getCouplings(); % save old couplings
-            obj.setCouplings(TBA_couplings);
+            obj.couplings = TBA_couplings;
+%             obj.setCouplings(TBA_couplings);
         end
             
         e_eff = obj.calcEffectiveEnergy(T, 0, obj.x_grid, obj.rapid_grid);
         theta = obj.calcFillingFraction(e_eff);
         
         if nargin == 3
-            obj.setCouplings(couplings_old); % return to old couplings
+            obj.couplings = couplings_old;
+%             obj.setCouplings(couplings_old); % return to old couplings
         end
     end
     

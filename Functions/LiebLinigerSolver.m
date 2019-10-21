@@ -61,7 +61,8 @@ methods (Access = public)
         
         if setCouplingFlag % adjust couplings to result
             couplings_new   = obj.getCouplings();
-            couplings_new.mu= @(t,x) mu0_fit - V_ext(t,x); 
+            couplings_new{1}= @(t,x) mu0_fit - V_ext(t,x);
+
             obj.setCouplings(couplings_new);
         end
         
@@ -69,7 +70,7 @@ methods (Access = public)
             % Calculates number of atoms in stationary TBA state given by
             % specied paramters.
             couplings_fit   = obj.getCouplings();
-            couplings_fit.mu= @(t,x) mu0 - V_ext(t,x);
+            couplings_fit{1}= @(t,x) mu0 - V_ext(t,x);
             theta           = obj.calcThermalState(T, couplings_fit);
             density         = obj.calcCharges(theta, 0, 0);
             Natoms_fit      = trapz(permute(obj.x_grid, [5 2 3 4 1]), density);
