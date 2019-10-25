@@ -1,1 +1,4 @@
 *.asv
+figures/
+*.gif
+*.png
