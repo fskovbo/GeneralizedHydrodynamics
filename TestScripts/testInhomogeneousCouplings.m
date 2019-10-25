@@ -6,7 +6,7 @@ clear all; close all;
 % (http://arxiv.org/abs/1906.01654)
 
 
-addpath('..\Functions\')
+addpath(['..' filesep 'Functions' filesep])
 
 %% Define simulation parameters
 

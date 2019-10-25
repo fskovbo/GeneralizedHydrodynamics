@@ -5,7 +5,7 @@ clear all; close all;
 % "Generalized hydrodynamics with space-time inhomogeneous interactions".
 % (http://arxiv.org/abs/1906.01654)
 
-addpath('..\Functions\')
+addpath(['..' filesep 'Functions' filesep])
 
 %% Define simulation parameters
 
@@ -21,9 +21,6 @@ tmax        = 0.3;
 k_array     = linspace(-kmax, kmax, N);
 x_array     = linspace(-xmax, xmax, M);
 t_array     = linspace(0, tmax, tmax/dt+2);
-
-stepOrder   = 2;
-extrapFlag  = false;
 
 
 T           = 0.25;

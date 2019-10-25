@@ -1,6 +1,6 @@
 clear all; close all;
 
-addpath('..\Functions\')
+addpath(['..' filesep 'Functions' filesep])
 
 % Reproduces the results found in the paper:
 % "Hydrodynamics of the interacting Bose gas in the Quantum Newton Cradle

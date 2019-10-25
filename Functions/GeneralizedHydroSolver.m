@@ -374,16 +374,16 @@ methods (Access = public)
         
         if nargin == 3 % use input TBA_couplings
             couplings_old = obj.getCouplings(); % save old couplings
-            obj.couplings = TBA_couplings(1,:);
-%             obj.setCouplings(TBA_couplings);
+%             obj.couplings = TBA_couplings(1,:);
+            obj.setCouplings(TBA_couplings);
         end
             
         e_eff = obj.calcEffectiveEnergy(T, 0, obj.x_grid, obj.rapid_grid);
         theta = obj.calcFillingFraction(e_eff);
         
         if nargin == 3
-            obj.couplings = couplings_old(1,:);
-%             obj.setCouplings(couplings_old); % return to old couplings
+%             obj.couplings = couplings_old(1,:);
+            obj.setCouplings(couplings_old); % return to old couplings
         end
     end
     
@@ -744,6 +744,10 @@ methods (Access = protected)
         ebare       = obj.getBareEnergy(t, x, obj.rapid_grid, obj.type_grid); 
         kernel      = dk/(2*pi)*obj.calcScatteringRapidDeriv(t, x, obj.rapid_grid, obj.rapid_grid, obj.type_grid, obj.type_grid );
         
+        if isa(T, 'function_handle')
+            T = T(x);
+        end
+        
         e_eff       = GHDtensor(obj.N, 1, obj.Ntypes, 1, obj.M);
         e_eff_old   = GHDtensor(obj.N, 1, obj.Ntypes, 1, obj.M);
         error_rel   = 1;
@@ -916,14 +920,14 @@ methods (Access = protected)
         
         % Replace all couplings with their expressions
         for i = 1:length(obj.couplingNames)
-            if obj.autoDerivCoup
-                % Replace couplings with their expressions
-                coup_str = func2str( obj.couplings{i} );
-                coup_str = erase(coup_str, ' '); % erase spaces
-                coup_str = erase(coup_str, '@(t,x)'); % erase function prefix
-                coup_str = [ '(' coup_str ')' ]; % brace expression
-                func_str = regexprep(func_str, obj.couplingNames{i}, coup_str);
-            else
+%             if obj.autoDerivCoup
+%                 % Replace couplings with their expressions
+%                 coup_str = func2str( obj.couplings{i} );
+%                 coup_str = erase(coup_str, ' '); % erase spaces
+%                 coup_str = erase(coup_str, '@(t,x)'); % erase function prefix
+%                 coup_str = [ '(' coup_str ')' ]; % brace expression
+%                 func_str = regexprep(func_str, obj.couplingNames{i}, coup_str);
+%             else
                 % Replace couplings with link to their anonymous function
                 op = '[* / ^ ( ) + - \s]';
                 repl = ['(obj.couplings{' num2str(i) '}(t,x))'];
@@ -936,7 +940,7 @@ methods (Access = protected)
                 for j = fliplr(1:length(idx))
                     func_str = replaceBetween( func_str, idx(j)+1, idx(j)+length(obj.couplingNames{i}), repl );
                 end
-            end
+%             end
         end
         
         if isKernel
@@ -950,13 +954,13 @@ methods (Access = protected)
         end
 
         % Convert to anonymous function 
-        if obj.autoDerivCoup
-            func     = str2func(func_str);
-        else
+%         if obj.autoDerivCoup
+%             func     = str2func(func_str);
+%         else
             % str2func doesnt work when string includes links to other
             % anonymous functions...
             func = eval(func_str);
-        end
+%         end
     end
     
 end % end protected methods
