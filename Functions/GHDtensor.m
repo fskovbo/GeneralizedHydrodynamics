@@ -2,6 +2,7 @@ classdef GHDtensor < handle
     
 properties (Access = private)
     
+    % Underlying data structure 
     matrix = [];
     
     % dimensions
@@ -42,11 +43,15 @@ methods (Access = public)
     
     
     function C = flatten(obj)
+        % Rehapes tensor into 2D- (3D with spacial index) matrix, by
+        % combining indices (rapid1, type1) into a single, first index and 
+        % indices (rapid2, type2) into a single, second index.
         C = reshape(permute(obj.matrix, [1 3 2 4 5]), obj.d1*obj.d3, obj.d2*obj.d4, obj.d5 );
     end
     
     
     function C = unflatten(obj, A)
+        % Reverse operation of the flatten.
         C = permute(reshape( A, size(obj.matrix) ), [1 3 2 4 5]);
     end
     
@@ -61,7 +66,8 @@ methods (Access = public)
     
     
     function C = double(obj)
-         C = obj.matrix;
+        % Cast GHDtensor to doulbe, i.e. return underlying matrix
+        C = obj.matrix;
     end
     
     

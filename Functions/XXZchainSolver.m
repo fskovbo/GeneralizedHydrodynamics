@@ -2,15 +2,6 @@ classdef XXZchainSolver < GeneralizedHydroSolver
     % Class specifying model specific quantities.
     % Solves the Bethe-Boltzmann equation for GHD propagation via the
     % superclass, which implements the general methods. 
-    %
-    % The units used in this parameterization are as follows:
-    % m         = 1/2
-    % hbar      = 1
-    % g_1d      = 1
-    % Lg        = hbar^2/(m*g_1d) = 1 (unit of length)
-    % Eg        = 0.5*m*g_1d^2/hbar^2 = 1 (unit of energy)
-    % rapidity  = k, whereby p = hbar*k = rapid
-    %  
     
 properties (Access = protected)
     
@@ -69,7 +60,7 @@ methods (Access = protected)
         dT1(isnan(dT1)) = 0; % removes any NaN
         dT2(isnan(dT2)) = 0; % removes any NaN
         
-        
+        % Calculate 3rd term
         dT3 = zeros(size(dT1));
         for i = 1:obj.Ntypes
             for j = 1:obj.Ntypes
@@ -114,7 +105,7 @@ methods (Access = protected)
         dT1(isnan(dT1)) = 0; % removes any NaN
         dT2(isnan(dT2)) = 0; % removes any NaN
         
-        
+        % Calculate 3rd term
         dT3 = zeros(size(dT1));
         for i = 1:obj.Ntypes
             for j = 1:obj.Ntypes
@@ -139,7 +130,7 @@ methods (Access = protected)
             h_i = repmat(obj.type_grid, obj.N, 1);
         case 1 
             h_i = obj.getBareMomentum(t, x, rapid,  obj.type_grid);
-        case 2 % eigenvalue of H operator
+        case 2 % eigenvalue of H operator WITHOUT B-field
             h_i = obj.getBareEnergy(t, x, rapid,  obj.type_grid) + obj.type_grid.*obj.couplings{1}(t,x);
         otherwise 
             error(['Eigenvalue ' num2str(i) ' not implmented!'])

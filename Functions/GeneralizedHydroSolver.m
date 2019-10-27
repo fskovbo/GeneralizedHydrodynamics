@@ -5,16 +5,32 @@ classdef GeneralizedHydroSolver < handle
     % This class contains abstract methods, which are model specific,
     % whereby they must be implemented in the corresponding subclass.
     % 
+    % NOTE: This version employs an auto-derivative feature, whereby only
+    % the model parameters (energy, momentum, scattering) along with the
+    % couplings must be specified - their derivatives are automatically
+    % taken. The model parameters, couplings, and associated derivatives
+    % are all stores as anonymous functions in cell-arrays.
+    % 
+    % In case the auto-derivative fails (feature is not very robust), one
+    % must supply coupling-derivatives along with the couplings in a cell
+    % array, while the derivatives of model parameters must be implmented 
+    % as overloaded class functions.
+    %
+    % Several options exists for solvers and auto-derivatives. The default
+    % options can be found in the properties of this class. To change
+    % options one must supply the constructor with a struct containing the
+    % options-parameters one wishes to change.
+    %
     % This class and any subclass of it must follow the following
     % convention for indeces:
-    %   Index 1: Rapid index used only for convolutions.
-    %   Index 2: Standard rapid index, dimension N.
-    %   Index 3: Standard space index, dimension M.
-    %   Index 4: Standard time index.
+    %   Index 1: Main rapidity index, size N.
+    %   Index 2: Secondary rapid index, used for kernels.
+    %   Index 3: Main type index, size Ntypes.
+    %   Index 4: Secondary type index, used for kernels.
+    %   Index 5: Spatial index, size M.
     %
-    % Thus, quantites have dimensions (1xNxM), while kernels have (NxNxM)
     
-properties (Access = public)
+properties (Access = private)
     % Grid lengths
     M               = []; % number of spatial grid-points
     N               = []; % number of rapidity grid-points
@@ -32,7 +48,7 @@ properties (Access = public)
     modelCoupDerivs = []; % @(t,x,rapid,type) derivatives of energy(first row), momentum (second row), and scattering (third row) w.r.t. couplings #i'th column
     modelRapidDerivs= []; % @(t,x,rapid,type) derivatives of energy(first), momentum (second), and scattering (third ) w.r.t. rapidity
     
-    % Optional parameters (default values specified here)
+    % Optional parameters (default values specified here). 
     homoEvol        = false;    % Flag for homogeneous evolution (no acceleration)
     tolerance       = 1e-6;     % Tolerance for TBA solution
     maxcount        = 100;      % Max interations for TBA solution
@@ -91,7 +107,7 @@ methods (Access = public)
         obj.rapid_grid  = reshape(rapid_grid, obj.N, 1); % 1st index is rapidity
         obj.type_grid   = reshape( 1:Ntypes, 1, 1, Ntypes ); % Types are 3rd index
         
-        % Copy fields of Options struct into class
+        % Copy fields of Options struct into class properties
         if nargin > 4
             fn = fieldnames(Options);
             for i = 1:length(fn)                      
@@ -119,13 +135,15 @@ methods (Access = public)
         
         
         if ~obj.autoDerivCoup
-            % Derivatives of coupling are passed along with couplings
+            % Derivatives of coupling are passed along with couplings as
+            % the second and thrid row of cell array
             obj.couplingDerivs = couplings([2,3],:);
         else
             % Calculate derivatives of couplings w.r.t. x and t
             obj.couplingDerivs = cell(2, length(couplings));
 
-            for i = 1:length(couplings)           
+            for i = 1:length(couplings) 
+                % Format as string and take derivative
                 coup_str    = func2str( couplings{i} );
                 coup_str    = erase(coup_str, ' '); % erase spaces
                 coup_str    = erase(coup_str, '@(t,x)'); % erase function prefix
@@ -144,8 +162,10 @@ methods (Access = public)
         obj.model{2}    = obj.formatFunction(obj.momentum, false);
         obj.model{3}    = obj.formatFunction(obj.scattering, true);
         
-        % Take derivatives of model w.r.t. rapidity and format to anonymous functions
+        % Compute derivatives of model functions and format to anonymous
+        % functions, which are stored in appropriate cell array.
         if obj.autoDerivModel
+            % Derivatives of model w.r.t. rapidity
             dedr = obj.takeDerivStr( obj.energy, 'rapid' );
             dpdr = obj.takeDerivStr( obj.momentum, 'rapid' );
             dTdr = obj.takeDerivStr( obj.scattering, 'rapid' );
@@ -154,7 +174,7 @@ methods (Access = public)
             obj.modelRapidDerivs{2} = obj.formatFunction(dpdr, false);
             obj.modelRapidDerivs{3} = obj.formatFunction(dTdr, true);
 
-            % Take derrivatives of model w.r.t. couplings and format to anonymous functions
+            % Derrivatives of model w.r.t. couplings 
             for i = 1:length(obj.couplingNames)
                 dedc = obj.takeDerivStr( obj.energy, obj.couplingNames{i} );
                 dpdc = obj.takeDerivStr( obj.momentum, obj.couplingNames{i} );
@@ -895,30 +915,36 @@ methods (Access = protected)
         deriv_str   = regexprep(deriv_str, 'pi', 'placeholder');
         deriv_sym   = str2sym( deriv_str );
 
+        % Simplifies the expression for more efficient calculations.
+        % Note: More complicated expressions require more steps to simplify,
+        % however too many steps might result in numerical errors!
         deriv_sym   = simplify( deriv_sym , 'Steps', obj.simplifySteps);
 
-        % If derivative is zero, return empty 
+        % Format back to string
+        deriv_str   = char( deriv_sym );
+        deriv_str   = regexprep(deriv_str, 'placeholder', 'pi');
+        
+        % Returns flag specifying if derivative is zero 
         if isequal(deriv_sym, sym(0))
             isZero = true;
         else
             isZero = false;
         end
-
-        % Format back to string
-        deriv_str   = char( deriv_sym );
-        deriv_str   = regexprep(deriv_str, 'placeholder', 'pi');
     end
     
     
     function func = formatFunction(obj, func_str, isKernel)
-        % Takes a function formated as a string and outputs an anonymous function 
+        % Takes a function formated as a string and outputs an anonymous
+        % function. Automatically formats all references to couplings to
+        % its function stored in the class.
           
-        % Replace operations with elementwise ones
+        % Replace operations with elementwise ones (since variables are vectors)
         func_str = regexprep(func_str, '*', '.*');
         func_str = regexprep(func_str, '/', './');
         func_str = regexprep(func_str, '\^', '\.^');
         
-        % Replace all couplings with their expressions
+        % Replace references to couplings with their direct expression or a
+        % link to their anonymous function.
         for i = 1:length(obj.couplingNames)
 %             if obj.autoDerivCoup
 %                 % Replace couplings with their expressions
@@ -932,6 +958,10 @@ methods (Access = protected)
                 op = '[* / ^ ( ) + - \s]';
                 repl = ['(obj.couplings{' num2str(i) '}(t,x))'];
 
+                % Find locations of couplingNames in string, where
+                % couplingsNames{i} must have a matematical operator or
+                % whitespace next to it, in order to discern it from being
+                % part of a word, i.e. do NOT replace 'x' in 'exp'
                 idx1 = regexp(func_str, [op obj.couplingNames{i} op ]);
                 idx2 = regexp(func_str, [op obj.couplingNames{i} ]);
                 idx3 = regexp(func_str, [ obj.couplingNames{i} op ]);
@@ -946,20 +976,27 @@ methods (Access = protected)
         if isKernel
             func_str = regexprep(func_str, 'rapid', '(rapid1-rapid2)');
             
-            % Add parameter prefix to string 
+            % Add function handle prefix to string 
             func_str = ['@(t, x, rapid1, rapid2, type1, type2) ' func_str];
         else
-            % Add parameter prefix to string 
+            % Add function handle prefix to string 
             func_str = ['@(t, x, rapid, type) ' func_str];
         end
 
+        % Conver to anonymous function
+        % Note: currently uses eval(), which is usually not adviced,
+        % however, the standard method does not support links to other
+        % anonymous functions...
+        func = eval(func_str);
+        
+        
         % Convert to anonymous function 
 %         if obj.autoDerivCoup
 %             func     = str2func(func_str);
 %         else
             % str2func doesnt work when string includes links to other
             % anonymous functions...
-            func = eval(func_str);
+%             func = eval(func_str);
 %         end
     end
     
