@@ -30,7 +30,7 @@ classdef GeneralizedHydroSolver < handle
     %   Index 5: Spatial index, size M.
     %
     
-properties (Access = private)
+properties (Access = protected)
     % Grid lengths
     M               = []; % number of spatial grid-points
     N               = []; % number of rapidity grid-points
@@ -802,7 +802,7 @@ methods (Access = protected)
             
         x_back          = obj.x_grid - dt*v_eff;
         r_back          = obj.rapid_grid - dt*a_eff;
-
+        
         % Use interpolation to find theta_prev at x_back, r_back and
         % assign values to theta.
         theta_next      = obj.interpPhaseSpace(theta_prev, r_back, x_back, obj.extrapFlag);
