@@ -252,7 +252,7 @@ methods (Access = public)
                 % Calculate first theta_mid at dt/2 using first order step
                 for i = 1:10
                     t         = (i-1)*ddt;
-                    theta_aux = obj.performFirstOrderStep(theta_guess, theta_aux, u_init, w_init, t, ddt);
+                    theta_aux = obj.performFirstOrderStep(theta_guess, theta_aux, u_init, t, ddt);
                 end
                 
             otherwise
@@ -268,10 +268,9 @@ methods (Access = public)
         % Propagate theta using stepfunction
         for n = 1:Nsteps
             dt                  = t_array(n+1) - t_array(n);
-            [theta, theta_aux, u, w] = stepFunc(theta_aux, theta, u, w, t_array(n), dt);
+            [theta, theta_aux, u] = stepFunc(theta_aux, theta, u, t_array(n), dt);
             theta_t{n+1}  = theta;
-            u_t{n+1}      = u;
-            w_t{n+1}      = w;
+            u_t{n+1}      = u; 
             
             % show progress
             cpb_text = sprintf('%d/%d steps evolved', n, Nsteps);
@@ -506,7 +505,6 @@ methods (Access = public)
     end
     
     
-    
 end % end public methods
 
 
@@ -519,8 +517,6 @@ methods (Access = protected)
     % arrays, which are generated using the auto-differentiation feature.
     % If this feature does not produce good functions, one can manually
     % overload these functions in the specific implementation.
-    
-    
     function ebare = getBareEnergy(obj, t, x, rapid, type)
         % This function simply calls the appropriate anonnymous function
         % stored in one of the cell arrays, and makes sure that the format
