@@ -137,7 +137,9 @@ methods (Access = public)
         if ~obj.autoDerivCoup
             % Derivatives of coupling are passed along with couplings as
             % the second and thrid row of cell array
-            obj.couplingDerivs = couplings([2,3],:);
+            if size(couplings,1) > 1
+                obj.couplingDerivs = couplings([2,3],:);
+            end
         else
             % Calculate derivatives of couplings w.r.t. x and t
             obj.couplingDerivs = cell(2, length(couplings));
@@ -249,10 +251,13 @@ methods (Access = public)
                 w           = w_init;
                 theta_guess = GHDtensor(obj.N, 1, obj.Ntypes, 1, obj.M);
                 
-                % Calculate first theta_mid at dt/2 using first order step
+                % Calculate first theta_mid at t = dt/10/2 using first order
+                % step, then use that to calculate the actual theta_mid at
+                % t = dt/2 using second order steps
+                theta_mid = obj.performFirstOrderStep(theta_guess, theta_aux, u_init, w_init, 0, ddt);
                 for i = 1:10
                     t         = (i-1)*ddt;
-                    theta_aux = obj.performFirstOrderStep(theta_guess, theta_aux, u_init, w_init, t, ddt);
+                    [theta_aux, theta_mid] = obj.performSecondOrderStep(theta_mid, theta_aux, u_init, w_init, t, ddt);
                 end
                 
             otherwise
@@ -399,8 +404,15 @@ methods (Access = public)
         % If no couplings are passed to method, use already set couplings.
         
         if nargin == 3 % use input TBA_couplings
-            couplings_old = obj.getCouplings(); % save old couplings
-%             obj.couplings = TBA_couplings(1,:);
+            
+            % Save old couplings and settings
+            couplings_old   = obj.getCouplings();
+            autoDerivCoup_old   = obj.autoDerivCoup;
+            autoDerivModel_old  = obj.autoDerivModel;
+            
+            % Set new couplings (set auto-derivs to false, as they're not needed)
+            obj.autoDerivCoup = false;
+            obj.autoDerivModel = false;
             obj.setCouplings(TBA_couplings);
         end
             
@@ -408,8 +420,10 @@ methods (Access = public)
         theta = obj.calcFillingFraction(e_eff);
         
         if nargin == 3
-%             obj.couplings = couplings_old(1,:);
-            obj.setCouplings(couplings_old); % return to old couplings
+            % Return to old couplings and settings
+            obj.autoDerivCoup = autoDerivCoup_old;
+            obj.setCouplings(couplings_old);
+            obj.autoDerivModel = autoDerivModel_old;
         end
     end
     

@@ -1,4 +1,4 @@
-classdef LiebLinigerSolver_SI
+classdef LiebLinigerSolver_SI_test
     % Wraps around LLS such that one can pass and receive quantitites in SI
     % units.
 
@@ -25,23 +25,13 @@ end % end private properties
 methods (Access = public)
     
     %% Constructor
-    function obj = LiebLinigerSolver_SI(omega_perp_si, x_grid, rapid_grid, couplings, Options)
+    function obj = LiebLinigerSolver_SI_test(omega_scale, x_grid, rapid_grid, couplings, Options)
         % Calculate unit scales
-        g1D_si      = 2*obj.hbar_si*omega_perp_si*obj.as_si;
-
-        obj.Eg_si   = 0.5*obj.m_si*g1D_si^2 /obj.hbar_si^2; 
-        obj.Lg_si   = obj.hbar_si^2 /(g1D_si*obj.m_si); 
+        obj.Eg_si   = 0.5*obj.hbar_si*omega_scale; 
+        obj.Lg_si   = (sqrt(obj.m_si*omega_scale/obj.hbar_si))^(-1); 
         obj.t_si    = obj.hbar_si/obj.Eg_si; 
         obj.T_si    = obj.Eg_si/obj.kB_si;
         obj.P_si    = obj.hbar_si/obj.Lg_si;
-        
-        if isnan(omega_perp_si) % only for testing
-            obj.Eg_si   = 1; 
-            obj.Lg_si   = 1; 
-            obj.t_si    = 1; 
-            obj.T_si    = 1;
-            obj.P_si    = 1;   
-        end
         
         % Instantiate LiebLinigerSolver
         x_grid      = obj.convert2TBA(x_grid, 'length');
@@ -147,17 +137,12 @@ methods (Access = public)
     
     %% Wrapper functions
     function nk = calcMomentumDistr(obj, theta, t_array)
-        if nargin == 3
-            % Convert SI --> TBA
-            t_array = obj.convert2TBA(t_array, 'time');
-
-            % Calc momentum distribution
-            nk = obj.LLS.calcMomentumDistr(theta, t_array);
-        else
-            % Calc momentum distribution
-            nk = obj.LLS.calcMomentumDistr(theta);
-        end
-            
+        % Convert SI --> TBA
+        t_array = obj.convert2TBA(t_array, 'time');
+        
+        % Calc momentum distribution
+        nk = obj.LLS.calcMomentumDistr(theta, t_array);
+        
         % Convert TBA --> SI
         nk = obj.convert2TBA(nk, 'rapidity'); % convert 'per rapidity'
 

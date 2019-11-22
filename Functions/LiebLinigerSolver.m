@@ -54,10 +54,15 @@ methods (Access = public)
             setCouplingFlag = false;
         end
         
+        if isempty(V_ext)
+            V_ext = obj.couplings{1};
+        end
+        
         % Fit mu0 to Natoms
         mu0_guess   = 0;
         fitfunc     = @(mu0) abs( Natoms - calcNA(obj, mu0, T, V_ext) );
-        mu0_fit     = fminsearch(fitfunc, mu0_guess);
+        options     = optimset('Display','iter');
+        mu0_fit     = fminsearch(fitfunc, mu0_guess,options);
         
         if setCouplingFlag % adjust couplings to result
             couplings_new   = obj.getCouplings();
@@ -75,6 +80,24 @@ methods (Access = public)
             density         = obj.calcCharges(theta, 0, 0);
             Natoms_fit      = trapz(permute(obj.x_grid, [5 2 3 4 1]), density);
         end % end nested function
+    end
+    
+    
+    function nk = calcMomentumDistr(obj, theta, t_array)
+        
+        Nsteps  = length(theta); % number of time steps
+        nk       = zeros(obj.N, Nsteps);
+        delta_x = obj.x_grid(2) - obj.x_grid(1);
+        rho     = obj.transform2rho(theta, t_array);
+        
+        if ~iscell(rho)
+            nk(:,1) = delta_x * squeeze(sum( double(rho) , 5 ));
+        else
+            for i = 1:Nsteps
+                rho_i = rho{i};
+                nk(:,i) = delta_x * squeeze(sum( double(rho_i) , 5 ));
+            end
+        end
     end
     
       
@@ -103,9 +126,12 @@ methods (Access = protected)
         
         % Calculate acceleration from inhomogenous potential. Note dmudt
         % does not contribute as f = 0;
-        a_eff_mu = obj.couplingDerivs{2,1}(t,x);
-        if size(a_eff_mu,1) == 1
-            a_eff_mu = repmat(a_eff_mu, obj.N, 1); 
+        a_eff_mu = 0;
+        if ~isempty(obj.couplingDerivs{2,1})
+            a_eff_mu = obj.couplingDerivs{2,1}(t,x);
+            if size(a_eff_mu,1) == 1
+                a_eff_mu = repmat(a_eff_mu, obj.N, 1); 
+            end
         end
         a_eff_mu = GHDtensor(a_eff_mu);
         
