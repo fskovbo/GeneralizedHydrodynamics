@@ -78,44 +78,112 @@ methods (Access = public)
             W2_temp_dr = obj.applyDressing( W2_temp, theta_0y, 0 ); 
             W2_temp_sdr= W2_temp_dr - W2_temp;
             
-            W1         = 0;
-            W3         = 0;
             
-            corrMatCol      = zeros(obj.M,1,2);
-            
-            for x_index = 1:obj.M
-                u_tx        = atSpacePoint(u_t, x_index);
-                dudr_tx     = atSpacePoint(dudr_t, x_index);
-                theta_tx    = atSpacePoint(theta_t, x_index);
-                rho_tx      = atSpacePoint(rho_t, x_index);
-                rhoS_tx     = atSpacePoint(rhoS_t, x_index);
-                cp_tx       = atSpacePoint(corr_prod, x_index);
-                g_tx        = atSpacePoint(g_t, x_index);                    
-               
- 
-                gamma       = obj.findRootSet( u_tx, obj.x_grid(y_index), dudr_tx );
-
-                % Calculate contribution from direct propagator
-                direct_temp = obj.interp2Gamma( cp_tx.*g_tx, gamma); % (1xG)
-                direct      = sum(sum(double(direct_temp) ,1) ,3); % sum over gamma (rapid1 and type1)
-                
-                % Calculate indirect propagator
-                W2          = - heaviside( (double(u_tx) - obj.x_grid(y_index)) ) .* W2_temp_sdr;
-                [indirect, W1, W3] = obj.calcIndirectCorrelation(W1, W2, W3, gamma, theta_tx, rho_tx, rhoS_tx, u_tx, g_tx, cp_tx );
-                
-                corrMatCol(x_index,:,1) = direct;
-                corrMatCol(x_index,:,2) = indirect;
-                
-            end
-            corrMat(:,y_index,:) = corrMatCol;
+            corrMat(:,y_index,:) = obj.calcCorrelationX(u_t, dudr_t, theta_t, rho_t, rhoS_t, corr_prod, g_t, W2_temp_sdr, obj.x_grid(y_index));
+        end
+    end
+    
+    
+    function corrFunc = calcCorrelationFunc(obj, g_0, g_t, theta_t, rho_t, rhoS_t, u_t)        
+        if iscell(theta_t)
+            Nsteps = length(theta_t);
+        else
+            Nsteps = 1;
         end
         
+        if mod(obj.M, 2) == 0
+            y_index1    = (obj.M)/2;
+            y_index2    = (obj.M)/2 + 1;
+            
+            theta_0y1   = atSpacePoint(obj.theta_0, y_index1);
+            theta_0y2   = atSpacePoint(obj.theta_0, y_index2);
+            theta_0y    = (theta_0y1 + theta_0y2)/2;
+            
+            f_0y        = obj.getStatFactor(theta_0y);
+            
+            g_0y1       = atSpacePoint(g_0, y_index1);
+            g_0y2       = atSpacePoint(g_0, y_index2);
+            g_0y        = (g_0y1 + g_0y2)/2;
+            
+            y           = (obj.x_grid(y_index1) + obj.x_grid(y_index2))/2;
+            
+            W2_temp1    = atSpacePoint(obj.rhoS_0,y_index1).*f_0y.*g_0y;
+            W2_temp2    = atSpacePoint(obj.rhoS_0,y_index2).*f_0y.*g_0y; 
+            W2_temp     = (W2_temp1 + W2_temp2)/2;
+        else
+            y_index     = (1+obj.M)/2;
+            
+            theta_0y    = atSpacePoint(obj.theta_0, y_index);
+            f_0y        = obj.getStatFactor(theta_0y);
+            g_0y        = atSpacePoint(g_0, y_index);
+            y           = obj.x_grid(y_index);
+            W2_temp     = atSpacePoint(obj.rhoS_0,y_index).*f_0y.*g_0y;  
+        end
+        
+        corrFunc    = zeros(obj.M, Nsteps, 2);
+
+        W2_temp_dr  = obj.applyDressing( W2_temp, theta_0y, 0 ); 
+        W2_temp_sdr = W2_temp_dr - W2_temp;
+        
+        
+        % initialize progress bar
+        cpb = ConsoleProgressBar();                 % create instance
+        initialize_progbar;                         % initialize progress bar with standard parameters
+        fprintf('Correlation function progress:');
+        cpb.start();   
+        
+        for i = 1:Nsteps
+            [~, dudr_t] = gradient(double(u_t{i}), 0, obj.rapid_grid, 0, 0, 0 ); %
+            dudr_t      = GHDtensor( dudr_t );
+            
+            corr_prod   = rhoS_t{i}.*theta_0y.*f_0y.*g_0y./abs(dudr_t); 
+            corrFunc(:,i,:) = obj.calcCorrelationX(u_t{i}, dudr_t, theta_t{i}, rho_t{i}, rhoS_t{i}, corr_prod, g_t{i}, W2_temp_sdr, y);
+            
+            % show progress
+            cpb_text = sprintf('%d/%d timesteps evaluated', i, Nsteps);
+            cpb.setValue(i/Nsteps);
+            cpb.setText(cpb_text);
+        end
+        fprintf('\n')
     end
+    
     
 end % end public methods
 
 
 methods (Access = private)
+    
+    function corrMatCol = calcCorrelationX(obj, u_t, dudr_t, theta_t, rho_t, rhoS_t, corr_prod, g_t, W2_temp_sdr, y)
+        W1         = 0;
+        W3         = 0;
+        corrMatCol = zeros(obj.M,1,2);
+
+        for x_index = 1:obj.M
+            u_tx        = atSpacePoint(u_t, x_index);
+            dudr_tx     = atSpacePoint(dudr_t, x_index);
+            theta_tx    = atSpacePoint(theta_t, x_index);
+            rho_tx      = atSpacePoint(rho_t, x_index);
+            rhoS_tx     = atSpacePoint(rhoS_t, x_index);
+            cp_tx       = atSpacePoint(corr_prod, x_index);
+            g_tx        = atSpacePoint(g_t, x_index);                    
+
+
+            gamma       = obj.findRootSet( u_tx, y, dudr_tx );
+
+            % Calculate contribution from direct propagator
+            direct_temp = obj.interp2Gamma( cp_tx.*g_tx, gamma); % (1xG)
+            direct      = sum(sum(double(direct_temp) ,1) ,3); % sum over gamma (rapid1 and type1)
+
+            % Calculate indirect propagator
+            W2          = - heaviside( (double(u_tx) - y) ) .* W2_temp_sdr;
+            [indirect, W1, W3] = obj.calcIndirectCorrelation(W1, W2, W3, gamma, theta_tx, rho_tx, rhoS_tx, u_tx, g_tx, cp_tx );
+
+            corrMatCol(x_index,:,1) = direct;
+            corrMatCol(x_index,:,2) = indirect;
+        end
+       
+    end
+    
 
     function [indirect, W1, W3] = calcIndirectCorrelation(obj, W1, W2, W3, gamma, theta_tx, rho_tx, rhoS_tx, u_tx, g_tx, corr_prod_x )
         % Moved calculation to separate function to declutter for-loops

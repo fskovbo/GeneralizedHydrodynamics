@@ -29,16 +29,17 @@ disp('Loading simulation data ...')
 
 GHD_data_t1 = load('GHD_T100_c1mid6'); % (c = 1, less stuff in middle)
 GHD_data_t2 = load('GHD_T100_c1mid7'); % (c = 1, less stuff in middle)
+GHD_data_t3 = load('GHD_T100_c1mid8'); % (c = 1, less stuff in middle)
 
 nk_ghd(:,:,1) = GHD_data_t1.save_data.nk_rapid;
 nk_ghd(:,:,2) = GHD_data_t2.save_data.nk_rapid;
-% nk_ghd(:,:,3) = GHD_data_t3.save_data.nk_rapid;
+nk_ghd(:,:,3) = GHD_data_t3.save_data.nk_rapid;
 % nk_ghd(:,:,4) = GHD_data_t4.save_data.nk_rapid;
 
 
 k_array(:,:,1) = GHD_data_t1.save_data.k_array;
 k_array(:,:,2) = GHD_data_t2.save_data.k_array;
-% k_array(:,:,3) = GHD_data_t3.save_data.k_array;
+k_array(:,:,3) = GHD_data_t3.save_data.k_array;
 % k_array(:,:,4) = GHD_data_t4.save_data.k_array;
 
 
@@ -139,8 +140,8 @@ ylabel('deviation from Gaussian')
 
 
 %% Calculate difference between experiment and simulation averages
-sqdist = zeros( Nsets, length(avg_t_exp) );
-sqdist_err = zeros( Nsets, length(avg_t_exp) , 2);
+dist_avg = zeros( Nsets, length(avg_t_exp) );
+dist_avg_err = zeros( Nsets, length(avg_t_exp) , 2);
 
 
 for i = 1:length(avg_t_exp)
@@ -149,9 +150,9 @@ for i = 1:length(avg_t_exp)
     
     for j = 1:Nsets
         % Interpolate experimental data so difference can be taken
-        nke = interp1(k_arr_exp, avg_exp(:,i), k_array(:,:,j));
+        nke = interp1(k_arr_exp, avg_exp(:,i), k_array(:,:,j));       
         
-        sqdist(j,i) = sum( (avg_ghd(:,index,j)*1e6 - nke' *1e6).^2 );
+        dist_avg(j,i) = sum( (avg_ghd(:,index,j)*1e6 - nke' *1e6).^2 );
         
         % Caculate "errorbars" given by the biggest differences within 10
         % timesteps
@@ -160,22 +161,90 @@ for i = 1:length(avg_t_exp)
         range( range > length(avg_t_ghd) ) = length(avg_t_ghd);
         
         diffs = sum( (avg_ghd(:,range,j)*1e6 - nke' *1e6).^2, 1 );
-        sqdist_err(j,i,1) = min(diffs);
-        sqdist_err(j,i,2) = max(diffs);
+        dist_avg_err(j,i,1) = min(diffs);
+        dist_avg_err(j,i,2) = max(diffs);
     end
 end
 
 
-%% Plot differences 
+%% Plot differences in average
 figure
 hold on
 box on
 
 for j = 1:Nsets
-    errorbar(avg_t_exp, sqdist(j,:), sqdist(j,:)-sqdist_err(j,:,1), sqdist_err(j,:,2)-sqdist(j,:)  )
+    errorbar(avg_t_exp, dist_avg(j,:), dist_avg(j,:)-dist_avg_err(j,:,1), dist_avg_err(j,:,2)-dist_avg(j,:)  )
 end
 xlabel('t')
 ylabel('difference between averages')
+
+
+
+%% Calculate shot-to-shot differences  
+omega_uncert_pct = 0.02;
+
+dist_shot = zeros( Nsets, (60+44*12) );
+dist_shot_err = zeros( Nsets, (60+44*12) , 2);
+
+
+for i = 1:(60+44*12)
+    % Find closest matching time
+    [~,idx] = min(abs( t_arr_exp(i) - 1e3*t_array));
+    
+    % Take into account uncertainty in omega, a. Simul time is within interval
+    %   [1/(1+a)*t , 1/(1+a)*t]
+    % which translates to pictures
+    %   10*[1/(1+a)*t , 1/(1+a)*t]
+
+    idx_low     = 1 + ceil( 10/(1+omega_uncert_pct)*t_arr_exp(i) );
+    idx_high    = 1 + floor( 10/(1-omega_uncert_pct)*t_arr_exp(i) );
+    
+    [i, idx_low , idx , idx_high]
+    
+    if idx > length(t_array)
+        break
+    end
+    
+    for j = 1:Nsets
+        % Interpolate experimental data so difference can be taken
+        nke = interp1(k_arr_exp, nk_exp(:,i), k_array(:,:,j));       
+        
+        dist_shot(j,i) = sum( (nk_ghd(:,idx,j)*1e6 - nke' *1e6).^2 );
+        
+        % Caculate "errorbars" given by the biggest differences within 10
+        % timesteps
+        range = idx_low:idx_high;
+        range( range < 1) = 1;
+        range( range > length(t_array) ) = length(t_array);
+        
+        diffs = sum( (nk_ghd(:,range,j)*1e6 - nke' *1e6).^2, 1 );
+        dist_shot_err(j,i,1) = min(diffs);
+        dist_shot_err(j,i,2) = max(diffs);
+    end
+end
+
+
+%% Plot differences in shot-to-shot
+figure
+hold on
+box on
+
+for j = 1:Nsets
+    errorbar(t_arr_exp(1:(60+44*12)), dist_shot(j,:), dist_shot(j,:)-dist_shot_err(j,:,1), dist_shot_err(j,:,2)-dist_shot(j,:)  )
+end
+xlabel('t')
+ylabel('difference between shots')
+
+
+figure
+hold on
+box on
+
+for j = 1:Nsets
+    plot(t_arr_exp(1:(60+44*12)), min( [dist_shot(j,:) ; dist_shot(j,:)-dist_shot_err(j,:,1) ; dist_shot_err(j,:,2)-dist_shot(j,:)] )  )
+end
+xlabel('t')
+ylabel('difference between shots')
 
 
 %% Plot stability of simulation
@@ -201,7 +270,7 @@ for i = 1:180
     index_ghd = length(t_array) + 20*(i - 360);
     
     subaxis(15,12,i,'SpacingHoriz',0.001,'SpacingVert',0.001) 
-    imagesc( squeeze(double(GHD_data_t4.save_data.x_theta_t{index_ghd})) )
+    imagesc( squeeze(double(GHD_data_t2.save_data.x_theta_t{index_ghd})) )
     caxis([0 1])
     colormap(hot)
     set(gca,'xticklabel',[])
@@ -210,6 +279,24 @@ for i = 1:180
     
 end
 
+
+figure(69)
+for i = 1:180
+    index_ghd = length(t_array) + 20*(i - 360);
+    
+    subaxis(15,12,i,'SpacingHoriz',0.001,'SpacingVert',0.001) 
+    hold on
+    box on
+    
+    for j = 1:Nsets
+        plot(k_array(:,:,j)*1e-6, nk_ghd(:,index_ghd,j)*1e6, 'LineWidth', 1.5)
+    end
+    
+    set(gca,'xticklabel',[])
+    set(gca,'yticklabel',[])
+    ylim([0 5])
+    
+end
 
 %% Plot period average of experiment vs simulation
 k_Bragg_si  = 4*pi/(852*1e-9); % [m^-1]
@@ -241,25 +328,3 @@ for i = 1:45
 end
 
 
-%% Test Gaussian fit of simulation at specific times
-% hej = figure(69);
-% 
-% for i = (length(avg_t_ghd) - 20):length(avg_t_ghd)
-%     for j = 1
-%         clf(hej)
-%         hold on
-%         box on
-%         
-%         kmax        = k_array(1,end,j);
-%         dk          = k_array(1,2,j)-k_array(1,1,j);
-%         k_arr_fit   = -2*kmax:dk:2*kmax;
-%         
-%         avg_fit     = padarray(avg_ghd(:,i,j), N/2 -1 );
-%         gfit        = fit(k_arr_fit'*1e-6, avg_fit*1e6, 'gauss1', options);
-%         fitcurve    = feval(gfit, k_arr_fit*1e-6);
-%     
-%         plot( k_arr_fit*1e-6, avg_fit*1e6 )
-%         plot( k_arr_fit*1e-6, fitcurve )
-%         title(['res = ' num2str(sum( (avg_fit *1e6 - fitcurve).^2 ))])
-%     end
-% end

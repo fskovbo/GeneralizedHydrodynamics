@@ -1,6 +1,6 @@
-clear all; %close all; clc;
+clear all; close all; clc;
 
-addpath([pwd '\Functions\'])
+addpath([pwd '..\Functions\'])
 
 
 %%
@@ -66,7 +66,7 @@ as_si       = 5.2e-9;
 
 Natoms      = 120;
 T_si        = 100*1e-9; 
-omega_si    = 1.0165*2*pi*83.3; % [s^-1]
+omega_si    = 1.015*2*pi*83.3; % [s^-1]
 % omega_si    = 1.014*2*pi*83.3; % [s^-1]
 % omega_si    = 2*pi*83.3; % [s^-1]
 omegaT_si   = 2*pi*31*1e3;
@@ -103,7 +103,7 @@ couplings{1,2} = @(t,x) c_si;
 
 
 delta_k     = (k_array(2)-k_array(1));
-theta_bragg = applyBraggPulse_test(theta_init, k_Bragg_si, delta_k, 0.2, 2.5, LLS);
+theta_bragg = applyBraggPulse_test(theta_init, k_Bragg_si, delta_k, 0.15, 2.5, LLS);
 % theta_bragg = applyBraggPulse(theta_init, k_Bragg_si, delta_k, LLS);
 
 %% plot initial state
@@ -129,7 +129,6 @@ imagesc(squeeze(double(theta_bragg)))
 trapz( k_array, nk_init )
 trapz(k_arr_exp, nk_init_exp)
 
-
 %% Solve dynamics and calculate quantities
 theta_t     = LLS.propagateTheta(theta_bragg, t_array);
 % n_t         = LLS.calcCharges(theta_t, 0, t_array) * 1e-6; % [um^-1]
@@ -140,7 +139,7 @@ theta_t     = LLS.propagateTheta(theta_bragg, t_array);
 
 % nk_rapid  = LLS.calcMomentumDistr(theta_t(1 + 10*((1:360) - 1) ), t_array(1 + 10*((1:360) - 1)));
 % nk_rapid  = LLS.calcMomentumDistr(theta_t(1 + 10*((1:180) - 1) ), t_array(1 + 10*((1:180) - 1)));
-
+% 
 % figure
 % for i = 1:180
 %     subaxis(15,12,i,'SpacingHoriz',0.001,'SpacingVert',0.001)
@@ -206,9 +205,8 @@ save_data.k_array = k_array;
 save_data.t_array = t_array(1:step:end);
 
 save_data.nk_rapid = nk_rapid;
-save_data.x_theta_t = theta_t(1:step:end);
 
-save('GHD_T100_c1mid7.mat', 'save_data')
+save('GHD_T100_c1mid8.mat', 'save_data')
 
 %%
 % figure(69)

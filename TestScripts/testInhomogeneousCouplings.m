@@ -35,11 +35,6 @@ T           = 0.5;
 % Harmonic potential
 LLS1        = LiebLinigerSolver(x_array, k_array, couplings1);
 theta1_init = LLS1.calcThermalState(T);
-
-figure
-plot(LLS1.calcMomentumDistr(theta1_init,0))
-return
-
 theta1_t    = LLS1.propagateTheta(theta1_init, t_array);
 n1_t        = LLS1.calcCharges(theta1_t, 0, t_array);
 
@@ -48,7 +43,7 @@ n1_t        = LLS1.calcCharges(theta1_t, 0, t_array);
 LLS2        = LiebLinigerSolver(x_array, k_array, couplings2);
 theta2_init = LLS2.calcThermalState(T);
 theta2_t    = LLS2.propagateTheta(theta2_init, t_array);
-n2_t        = LLS1.calcCharges(theta2_t, 0, t_array);
+n2_t        = LLS2.calcCharges(theta2_t, 0, t_array);
 
 
 %% ------------ Plot results -------------------

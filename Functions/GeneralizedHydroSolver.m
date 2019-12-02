@@ -520,6 +520,93 @@ methods (Access = public)
     end
     
     
+    function [CF, theta, C1P] = calcCorrelationFunction(obj, T, init_couplings, tcorr_array, dt, c_idx, areCurrents)
+        % Calculate two-point correlation matrix of two observables (O1,O2)
+        %   CM(x,y) = <O1(x,t) O2(y,0)>
+        % as well as one-point correlations, C1P, (i.e. averages) of said
+        % observables. Here, times t are entries of tcorr_array
+        %
+        % Currently only charge-densities and their associated currents are
+        % supported as observables. Thus,
+        %   O1 = q_i (for areCurrents(1) = 0 and i = c_idx(1))
+        %   O1 = j_i (for areCurrents(1) = 1 and i = c_idx(1))
+        % and similarly for O2.
+        %
+        % NOTE: Initial state must be a TBA stationary state specified by
+        % the parameters (T, init_couplings). Furthermore, any subsequent
+        % evolution of the state must be homogeneous!        
+        
+        
+        % Calculate initial state
+        [theta_0, e_eff]    = obj.calcThermalState(T, init_couplings);
+        [rho_0, rhoS_0]     = obj.transform2rho(theta_0, 0);
+        
+        % Calculate "acceleration" i.e. degree of inhomogeniety of state
+        [~,~,~,~,dedx]  = gradient( double(e_eff), 0, 0, 0, 0 , permute(obj.x_grid, [5 1 2 3 4]) );
+        a_eff0      = -dedx./(2*pi*rhoS_0);
+        
+        % Define all necessary functions for GHDcorrelations class
+        GHDeqs.applyDressing            = @(Q, theta, t) obj.applyDressing(Q, theta, t);
+        GHDeqs.calcScatteringRapidDeriv = @(rapid1, rapid2) obj.calcScatteringRapidDeriv(1, obj.x_grid, rapid1, rapid2, obj.type_grid, obj.type_grid);
+        GHDeqs.getStatFactor            = @(theta) obj.getStatFactor(theta);
+        
+        % Initialize object for calculating the correlations
+        GHDcorr = GHDcorrelations(obj.x_grid, obj.rapid_grid, theta_0, rho_0, rhoS_0, a_eff0, GHDeqs, obj.periodRapid);
+        
+        
+        % Calculate state variables at correlation times.
+        % NOTE: propagation MUST be homogeneous!
+         
+        % Create time grid for evolution
+        t_array         = 0:dt:tcorr_array(end);
+        t_array         = sort( [t_array, tcorr_array] ); % make sure tcorr_array is in t_array 
+        t_array         = unique(t_array); % removes dublicates if tcorr_array was already in t_array
+        [~, t_idx]      = ismember(tcorr_array, t_array); % get indices of tcorr_array entries
+        
+        % Time evolve theta_0
+        [theta_t, u_t]  = obj.propagateTheta(theta_0, t_array);
+        theta_t         = theta_t(t_idx); % get theta at t = 0 and t in tcorr_array
+        u_t             = u_t(t_idx); 
+        [rho_t, rhoS_t] = obj.transform2rho(theta_t, tcorr_array);
+        
+        
+        % Calculate/prepare outputs
+        [q0, j0]        = obj.calcCharges(theta_0, c_idx(2), 0);
+        theta           = [ {theta_0}, theta_t];
+        C1P             = zeros(obj.M, length(tcorr_array) + 1);
+         
+        for k = 1:length(tcorr_array)            
+            % Calculate g-functions, which will be acted on by the
+            % correlation propagators.
+            hi = obj.getOneParticleEV(tcorr_array(k), obj.x_grid, obj.rapid_grid, c_idx(1)); % should be (1xN)
+            hj = obj.getOneParticleEV(0, obj.x_grid, obj.rapid_grid, c_idx(2));
+
+            g_t = obj.applyDressing( hi, theta_t{k}, tcorr_array(k) ); % should be (1xNxM)
+            g_0 = obj.applyDressing( hj, theta_0, 0 );
+            
+            [qt, jt] = obj.calcCharges(theta_t{k}, c_idx(1), tcorr_array(k));
+            
+            C1P(:,1)    = q0;
+            C1P(:,1+k)  = qt;
+            
+            if areCurrents(1)
+                g_t = g_t .* obj.calcEffectiveVelocities(theta_t{k}, tcorr_array(k), obj.x_grid, obj.rapid_grid, obj.type_grid);
+                C1P(:,1+k)  = jt;
+            end
+            if areCurrents(2)
+                g_0 = g_0 .* obj.calcEffectiveVelocities(theta_0, 0, obj.x_grid, obj.rapid_grid, obj.type_grid);
+                C1P(:,1)    = j0;
+            end
+            
+            g_ttt{k} = g_t;
+            
+        end
+        
+        % Calculate correlation matrix
+        CF = GHDcorr.calcCorrelationFunc(g_0, g_ttt, theta_t, rho_t, rhoS_t, u_t);
+    end
+    
+    
     
 end % end public methods
 

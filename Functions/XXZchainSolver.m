@@ -42,9 +42,9 @@ methods (Access = protected)
 
     
     function dT = calcScatteringRapidDeriv(obj, t, x, rapid1, rapid2, type1, type2)
-        % Reshape input to right dimensions
-        rapid1  = reshape(rapid1, length(rapid1), 1); % rapid1 is 1st index
-        rapid2  = reshape(rapid2, 1, length(rapid2)); % rapid2 is 2nd index
+        % Reshape input to right dimensions        
+        rapid1  = reshape(rapid1, max(size(rapid1,1), size(rapid1,2)), 1, max(size(rapid1,3), size(rapid1,4)), 1); % rapid1 is 1st index
+        rapid2  = reshape(rapid2, 1, max(size(rapid2,1), size(rapid2,2)), 1, max(size(rapid2,3), size(rapid2,4))); % rapid2 is 2nd index
         type1   = reshape(type1, 1, 1, length(type1)); % type1 is 3rd index
         type2   = reshape(type2, 1, 1, 1, length(type2)); % type2 is 4th index
         
@@ -65,7 +65,9 @@ methods (Access = protected)
         for i = 1:obj.Ntypes
             for j = 1:obj.Ntypes
                 for n = (abs(i-j)+2):2:(i+j-2)
-                    temp = 2*obj.calcMomentumRapidDeriv(t, x, r_arg, n);
+                    r_arg_temp = r_arg(:, :, min(i, size(r_arg,3)), min(j ,size(r_arg,4)) );
+                    
+                    temp = 2*obj.calcMomentumRapidDeriv(t, x, r_arg_temp, n);
                     temp(isnan(temp)) = 0; % removes any NaN
                     dT3(:,:,i,j,:) = dT3(:,:,i,j,:) + temp;
                 end

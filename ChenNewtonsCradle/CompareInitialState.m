@@ -16,8 +16,8 @@ nk_init_a   = 120*data_init.N120_after/trapz(k_arr_exp, data_init.N120_after);
 
 %% Simulation parameters
 
-N           = 2^8;
-M           = 2^7;
+N           = 2^7;
+M           = 2^6;
 
 xmax_si     = 20*1e-6;
 kmax_si     = 1*1e7;
@@ -34,6 +34,7 @@ omegaT_si   = 2*pi*31*1e3;
 k_Bragg_si  = 4*pi/(852*1e-9); % [m^-1]
 
 g1D_si      = 2*hbar_si*omegaT_si*as_si;
+g1D_si      = g1D_si * (1 - 1.06*as_si/sqrt(hbar_si/m_si/omegaT_si))^(-1);
 c_si        = g1D_si*m_si/hbar_si^2;
 
 %% create arrays

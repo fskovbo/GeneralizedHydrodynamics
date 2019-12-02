@@ -112,14 +112,17 @@ methods (Access = public)
     
     
     function obj = setIdentity(obj)
-         if obj.d1 ~= obj.d2 && obj.d3 ~= obj.d4
-             error('Tensor is not square!')
-         end
+        if obj.d1 ~= obj.d2 && obj.d3 ~= obj.d4
+            error('Tensor is not square!')
+        end
+        
+        I_rapid = eye(obj.d1);
+        I_type  = repmat(eye(obj.d3), 1 ,1, 1, 1);
+        I_type  = permute(I_type, [3 4 1 2]);
+        x       = I_rapid.*I_type;
          
-         x = eye( obj.d1*obj.d3, obj.d2*obj.d4 );
-         x = unflatten(obj, x);
-         x = repmat(x , 1, 1, 1, 1, obj.d5);
-         obj.matrix = x;
+        x       = repmat(x , 1, 1, 1, 1, obj.d5);
+        obj.matrix = x;
     end
     
     
