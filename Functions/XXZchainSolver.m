@@ -22,14 +22,14 @@ end % end private properties
 methods (Access = public)
         
     % Constructor
-    function obj = XXZchainSolver(x_grid, rapid_grid, couplings, Ntypes, Options)   
+    function obj = XXZchainSolver(x_grid, rapid_grid, rapid_w, couplings, Ntypes, Options)   
         % Set default parameters
-        if nargin < 5
+        if nargin < 6
             Options = struct;
         end
    
         % Call superclass constructor
-        obj = obj@GeneralizedHydroSolver(x_grid, rapid_grid, couplings, Ntypes, Options);
+        obj = obj@GeneralizedHydroSolver(x_grid, rapid_grid, rapid_w, couplings, Ntypes, Options);
         
         % XXZ model has in principle infinite species of quasi-particles
     end

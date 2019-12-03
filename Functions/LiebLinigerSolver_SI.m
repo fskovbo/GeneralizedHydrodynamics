@@ -25,7 +25,7 @@ end % end private properties
 methods (Access = public)
     
     %% Constructor
-    function obj = LiebLinigerSolver_SI(omega_perp_si, x_grid, rapid_grid, couplings, Options)
+    function obj = LiebLinigerSolver_SI(omega_perp_si, x_grid, rapid_grid, rapid_w, couplings, Options)
         % Calculate unit scales
         g1D_si      = 2*obj.hbar_si*omega_perp_si*obj.as_si;
 
@@ -46,10 +46,11 @@ methods (Access = public)
         % Instantiate LiebLinigerSolver
         x_grid      = obj.convert2TBA(x_grid, 'length');
         rapid_grid  = obj.convert2TBA(rapid_grid, 'rapidity');
+        rapid_w     = obj.convert2TBA(rapid_w, 'rapidity');
         couplings   = obj.convert2TBA(couplings, 'couplings');
         
         
-        if nargin < 5
+        if nargin < 6
             disp('Warning! Auto-derivative of couplings not supported for SI units! Disabling auto-deriv ...')
             Options.autoDerivCoup = false;
         elseif Options.autoDerivCoup
@@ -57,7 +58,7 @@ methods (Access = public)
             Options.autoDerivCoup = false;
         end
         
-        obj.LLS     = LiebLinigerSolver(x_grid, rapid_grid, couplings, Options);
+        obj.LLS     = LiebLinigerSolver(x_grid, rapid_grid, rapid_w, couplings, Options);
     end
     
     

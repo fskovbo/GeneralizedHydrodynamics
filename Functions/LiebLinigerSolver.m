@@ -31,9 +31,9 @@ end % end private properties
 methods (Access = public)
         
     % Constructor
-    function obj = LiebLinigerSolver(x_grid, rapid_grid, couplings, Options)   
+    function obj = LiebLinigerSolver(x_grid, rapid_grid, rapid_w, couplings, Options)   
         % Set default parameters
-        if nargin < 4
+        if nargin < 5
             Options = struct;
         end
         
@@ -41,7 +41,7 @@ methods (Access = public)
         Ntypes = 1;
    
         % Call superclass constructor
-        obj = obj@GeneralizedHydroSolver(x_grid, rapid_grid, couplings, Ntypes, Options);
+        obj = obj@GeneralizedHydroSolver(x_grid, rapid_grid, rapid_w, couplings, Ntypes, Options);
     end
     
     
@@ -139,10 +139,9 @@ methods (Access = protected)
         a_eff_c = 0;
         if ~isempty(obj.couplingDerivs{1,2}) || ~isempty(obj.couplingDerivs{2,2})
             % Calculate derivative of scattering phase with respect to
-            % interaction c
-            delta_k = obj.rapid_grid(2) - obj.rapid_grid(1);            
+            % interaction c           
             dT      = obj.calcScatteringCouplingDeriv(2, t, x, rapid, obj.rapid_grid, type, obj.type_grid);
-            B       = delta_k/(2*pi) * dT.*transpose(theta);
+            B       = 1/(2*pi) * dT.*transpose(obj.rapid_w .* theta);
         end
         
         if ~isempty(obj.couplingDerivs{1,2}) % calc time deriv contribution

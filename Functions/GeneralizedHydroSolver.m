@@ -40,6 +40,8 @@ properties (Access = protected)
     rapid_grid      = [];
     x_grid          = [];
     type_grid       = [];
+    rapid_w         = []; % weights for Gaussian quadrature
+    
     
     % Cell array with anonymous functions
     model           = []; % @(t,x,rapid,type) energy(first), momentum (second), and scattering (third)
@@ -89,7 +91,7 @@ end % end protected abstract methods
 methods (Access = public)
     
     % Superclass constructor
-    function obj = GeneralizedHydroSolver(x_grid, rapid_grid, couplings, Ntypes, Options)        
+    function obj = GeneralizedHydroSolver(x_grid, rapid_grid, rapid_w, couplings, Ntypes, Options)        
         % Check format of input
         if ~isvector(x_grid) || ~isvector(rapid_grid)
             error('Input has wrong format!')
@@ -106,6 +108,7 @@ methods (Access = public)
         obj.x_grid      = reshape(x_grid, 1, 1, 1, 1, obj.M); % 5th index is space
         obj.rapid_grid  = reshape(rapid_grid, obj.N, 1); % 1st index is rapidity
         obj.type_grid   = reshape( 1:Ntypes, 1, 1, Ntypes ); % Types are 3rd index
+        obj.rapid_w     = reshape( rapid_w , length(rapid_w), 1); % 1st index is rapidity
         
         % Copy fields of Options struct into class properties
         if nargin > 4
@@ -346,11 +349,10 @@ methods (Access = public)
                 t = t_array(n);
             end
 
-            delta_k = obj.rapid_grid(2) - obj.rapid_grid(1);
             dp      = obj.calcMomentumRapidDeriv(t, obj.x_grid, obj.rapid_grid, obj.type_grid);
-            kernel  = delta_k/(2*pi) * obj.calcScatteringRapidDeriv(t, obj.x_grid, obj.rapid_grid, obj.rapid_grid, obj.type_grid, obj.type_grid); 
+            kernel  = 1/(2*pi) * obj.calcScatteringRapidDeriv(t, obj.x_grid, obj.rapid_grid, obj.rapid_grid, obj.type_grid, obj.type_grid); 
             
-            rhoS{n} = dp/(2*pi) - kernel*rho_n;
+            rhoS{n} = dp/(2*pi) - kernel*(obj.rapid_w.*rho_n);
             theta{n}= rho_n./rhoS{n};
         end
         
@@ -369,7 +371,6 @@ methods (Access = public)
         Ncharg  = length(c_idx); 
         q       = zeros(obj.M, Nsteps, Ncharg);
         j       = zeros(obj.M, Nsteps, Ncharg);
-        delta_k = obj.rapid_grid(2) - obj.rapid_grid(1);
     
         for i = 1:Nsteps
             if Nsteps == 1
@@ -391,8 +392,10 @@ methods (Access = public)
                 hn          = obj.getOneParticleEV( t, obj.x_grid, obj.rapid_grid, c_idx(n));               
                 hn_dr       = obj.applyDressing(hn, theta_i, t);
                 
-                q(:,i,n)    = delta_k/(2*pi) * squeeze(sum( sum( double(dp.*theta_i.*hn_dr) , 3) , 1)); % (M,1)
-                j(:,i,n)    = delta_k/(2*pi) * squeeze(sum( sum( double(dE.*theta_i.*hn_dr) , 3) , 1)); % (M,1)
+%                 q(:,i,n)    = delta_k/(2*pi) * squeeze(sum( sum( double(dp.*theta_i.*hn_dr) , 3) , 1)); % (M,1)
+%                 j(:,i,n)    = delta_k/(2*pi) * squeeze(sum( sum( double(dE.*theta_i.*hn_dr) , 3) , 1)); % (M,1)
+                q(:,i,n)    = 1/(2*pi) * squeeze(sum( obj.rapid_w .* sum( double(dp.*theta_i.*hn_dr) , 3) , 1)); % (M,1)
+                j(:,i,n)    = 1/(2*pi) * squeeze(sum( obj.rapid_w .* sum( double(dE.*theta_i.*hn_dr) , 3) , 1)); % (M,1)
             end
         end
     end
@@ -792,15 +795,14 @@ methods (Access = protected)
         end
         
         % Calculate dressing operator
-        delta_k = obj.rapid_grid(2) - obj.rapid_grid(1); 
-        kernel  = delta_k/2/pi*obj.calcScatteringRapidDeriv(t, obj.x_grid, obj.rapid_grid, obj.rapid_grid, obj.type_grid, obj.type_grid);
+        kernel  = 1/(2*pi)*obj.calcScatteringRapidDeriv(t, obj.x_grid, obj.rapid_grid, obj.rapid_grid, obj.type_grid, obj.type_grid);
         
         I_rapid = eye(obj.N);
         I_type  = repmat(eye(obj.Ntypes), 1 ,1, 1, 1);
         I_type  = permute(I_type, [3 4 1 2]);
         identity= I_rapid.*I_type;
 
-        U       = identity + kernel.*transpose(theta); 
+        U       = identity + kernel.*transpose(obj.rapid_w.*theta); 
         
         % We now have the equation Q = U*Q_dr. Therefore we solve for Q_dr
         % using the '\' operation.
@@ -841,10 +843,9 @@ methods (Access = protected)
         end
         
         % Calculate contribution for each coupling
-        for coupIdx = 1:length(obj.couplings)
-            delta_k = obj.rapid_grid(2) - obj.rapid_grid(1);            
+        for coupIdx = 1:length(obj.couplings)            
             dT      = obj.calcScatteringCouplingDeriv(coupIdx, t, x, rapid, obj.rapid_grid, type, obj.type_grid);
-            accKern = delta_k/(2*pi) * dT.*transpose(theta);
+            accKern = 1/(2*pi) * dT.*transpose(obj.rapid_w .* theta);
             
             % if time deriv of coupling exist compute f
             if ~isempty(obj.couplingDerivs{1,coupIdx}) 
@@ -870,9 +871,8 @@ methods (Access = protected)
         % Calculates the dressed energy per particle epsilon(k), from which the
         % preasure and later the filling factor theta can be derived.
         % This is achieved by iteratively solving the TBA equation.
-        dk          = obj.rapid_grid(2) - obj.rapid_grid(1);
         ebare       = obj.getBareEnergy(t, x, obj.rapid_grid, obj.type_grid); 
-        kernel      = dk/(2*pi)*obj.calcScatteringRapidDeriv(t, x, obj.rapid_grid, obj.rapid_grid, obj.type_grid, obj.type_grid );
+        kernel      = 1/(2*pi)*obj.calcScatteringRapidDeriv(t, x, obj.rapid_grid, obj.rapid_grid, obj.type_grid, obj.type_grid );
         
         if isa(T, 'function_handle')
             T = T(x);
@@ -890,7 +890,7 @@ methods (Access = protected)
             
             % calculate epsilon(k) from integral equation using epsilonk_old
             % i.e. update epsilon^[n] via epsilon^[n-1]            
-            e_eff       = ebare./T - kernel*obj.getFreeEnergy(e_eff_old);
+            e_eff       = ebare./T - kernel*(obj.rapid_w .* obj.getFreeEnergy(e_eff_old));
             
             % calculate error
             v1          = flatten(e_eff);

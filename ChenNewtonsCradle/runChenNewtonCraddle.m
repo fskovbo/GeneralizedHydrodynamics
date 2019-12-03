@@ -50,12 +50,12 @@ trapz(k_arr_exp, nk_init_exp)
 N           = 2^7;
 M           = 2^7;
 
-Nsteps      = 100*120;
+Nsteps      = 15*120;
 stepOrder   = 2;
 
 xmax_si     = 40*1e-6;
 kmax_si     = 3*1e7;
-tmax_si     = 100*12*1e-3;
+tmax_si     = 15*12*1e-3;
 
 %% Experimental units
 
@@ -78,7 +78,8 @@ c_si        = g1D_si*m_si/hbar_si^2;
 
 %% create arrays
 x_array     = linspace(-xmax_si,xmax_si,M);
-k_array     = linspace(-kmax_si,kmax_si,N);
+% k_array     = linspace(-kmax_si,kmax_si,N);
+[k_array,kw]=legzo(N, -kmax_si, kmax_si);
 t_array     = linspace(0, tmax_si, Nsteps+1);
 
 
@@ -91,7 +92,7 @@ couplings = { @(t,x) 0              , @(t,x) c_si;
               @(t,x) dmudx(t,x)     , []            };
 
 % LLS         = LiebLinigerSolver_SI(omegaT_si, x_array, k_array, couplings);
-LLS         = LiebLinigerSolver_SI_test(omega_si, x_array, k_array, couplings);
+LLS         = LiebLinigerSolver_SI_test(omega_si, x_array, k_array, kw, couplings);
 mu0_fit     = LLS.fitAtomnumber(T_si, Vx, Natoms, true);
 
 theta_init  = LLS.calcThermalState(T_si);
@@ -103,8 +104,8 @@ couplings{1,2} = @(t,x) c_si;
 
 
 delta_k     = (k_array(2)-k_array(1));
-theta_bragg = applyBraggPulse_test(theta_init, k_Bragg_si, delta_k, 0.15, 2.5, LLS);
-% theta_bragg = applyBraggPulse(theta_init, k_Bragg_si, delta_k, LLS);
+% theta_bragg = applyBraggPulse_test(theta_init, k_Bragg_si, delta_k, 0.15, 2.5, LLS);
+theta_bragg = applyBraggPulse(theta_init, k_Bragg_si, delta_k, LLS);
 
 %% plot initial state
 nk_init  = LLS.calcMomentumDistr(theta_bragg, 0);
@@ -129,6 +130,8 @@ imagesc(squeeze(double(theta_bragg)))
 trapz( k_array, nk_init )
 trapz(k_arr_exp, nk_init_exp)
 
+return
+
 %% Solve dynamics and calculate quantities
 theta_t     = LLS.propagateTheta(theta_bragg, t_array);
 % n_t         = LLS.calcCharges(theta_t, 0, t_array) * 1e-6; % [um^-1]
@@ -138,25 +141,25 @@ theta_t     = LLS.propagateTheta(theta_bragg, t_array);
 %% Plot results
 
 % nk_rapid  = LLS.calcMomentumDistr(theta_t(1 + 10*((1:360) - 1) ), t_array(1 + 10*((1:360) - 1)));
-% nk_rapid  = LLS.calcMomentumDistr(theta_t(1 + 10*((1:180) - 1) ), t_array(1 + 10*((1:180) - 1)));
-% 
-% figure
-% for i = 1:180
-%     subaxis(15,12,i,'SpacingHoriz',0.001,'SpacingVert',0.001)
-%     hold on
-%     box on
-%     plot(k_array*1e-6 , nk_rapid(:,i)*1e6, 'LineWidth', 1.5)
-%     plot(k_arr_exp*1e-6 , nk_exp(i,:)*1e6, 'k')
-%     
-%     
-%     line([-k_Bragg_si*1e-6  , -k_Bragg_si*1e-6],[0 20 ],'Color','black','LineStyle','--')
-%     line([k_Bragg_si*1e-6 , k_Bragg_si*1e-6],[0 20 ],'Color','black','LineStyle','--')
-%     
-%     xlim([-30 30])
-%     ylim([0 15])
-%     set(gca,'xticklabel',[])
-%     set(gca,'yticklabel',[])
-% end
+nk_rapid  = LLS.calcMomentumDistr(theta_t(1 + 10*((1:180) - 1) ), t_array(1 + 10*((1:180) - 1)));
+
+figure
+for i = 1:180
+    subaxis(15,12,i,'SpacingHoriz',0.001,'SpacingVert',0.001)
+    hold on
+    box on
+    plot(k_array*1e-6 , nk_rapid(:,i)*1e6, 'LineWidth', 1.5)
+    plot(k_arr_exp*1e-6 , nk_exp(i,:)*1e6, 'k')
+    
+    
+    line([-k_Bragg_si*1e-6  , -k_Bragg_si*1e-6],[0 20 ],'Color','black','LineStyle','--')
+    line([k_Bragg_si*1e-6 , k_Bragg_si*1e-6],[0 20 ],'Color','black','LineStyle','--')
+    
+    xlim([-30 30])
+    ylim([0 15])
+    set(gca,'xticklabel',[])
+    set(gca,'yticklabel',[])
+end
 % 
 % figure
 % for i = 181:360
@@ -196,17 +199,17 @@ theta_t     = LLS.propagateTheta(theta_bragg, t_array);
 
 
 %%
-step = 1;
-
-nk_rapid  = LLS.calcMomentumDistr(theta_t(1:step:end), t_array(1:step:end));
-
-save_data.x_array = x_array;
-save_data.k_array = k_array;
-save_data.t_array = t_array(1:step:end);
-
-save_data.nk_rapid = nk_rapid;
-
-save('GHD_T100_c1mid8.mat', 'save_data')
+% step = 1;
+% 
+% nk_rapid  = LLS.calcMomentumDistr(theta_t(1:step:end), t_array(1:step:end));
+% 
+% save_data.x_array = x_array;
+% save_data.k_array = k_array;
+% save_data.t_array = t_array(1:step:end);
+% 
+% save_data.nk_rapid = nk_rapid;
+% 
+% save('GHD_T100_c1mid8.mat', 'save_data')
 
 %%
 % figure(69)

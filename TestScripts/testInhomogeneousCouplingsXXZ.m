@@ -18,7 +18,8 @@ kmax        = pi/2;
 xmax        = 1;
 tmax        = 0.3;
 
-k_array     = linspace(-kmax, kmax, N);
+% k_array     = linspace(-kmax, kmax, N);
+[k_array,kw]=legzo(N, -kmax, kmax);
 x_array     = linspace(-xmax, xmax, M);
 t_array     = linspace(0, tmax, tmax/dt+2);
 
@@ -30,7 +31,7 @@ couplings   = {@(t,x) -1 - 8*x.^2 , @(t,x) acosh(1.5 + 0.3*tanh(3*t).*sin( 4*pi*
 
 
 %% Initialize state and solve dynamics
-XXZ         = XXZchainSolver(x_array, k_array, couplings, Ntypes);
+XXZ         = XXZchainSolver(x_array, k_array, kw, couplings, Ntypes);
 theta_init  = XXZ.calcThermalState(T);
 theta_t     = XXZ.propagateTheta(theta_init, t_array);
 

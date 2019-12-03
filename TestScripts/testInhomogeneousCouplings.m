@@ -10,7 +10,7 @@ addpath(['..' filesep 'Functions' filesep])
 
 %% Define simulation parameters
 
-N           = 2^7;
+N           = 50; %2^6;
 M           = 2^6;
 dt          = 0.025;
 
@@ -18,7 +18,9 @@ kmax        = 3;
 xmax        = 3;
 tmax        = 12.5;
 
-k_array     = linspace(-kmax, kmax, N);
+% k_array     = linspace(-kmax, kmax, N);
+% kw = k_array(2) - k_array(1);
+[k_array,kw]=legzo(N, -kmax, kmax);
 x_array     = linspace(-xmax, xmax, M);
 t_array     = linspace(0, tmax, tmax/dt+1);
 
@@ -33,17 +35,21 @@ T           = 0.5;
 %% Initialize state and solve dynamics
 
 % Harmonic potential
-LLS1        = LiebLinigerSolver(x_array, k_array, couplings1);
+tic
+LLS1        = LiebLinigerSolver(x_array, k_array, kw, couplings1);
 theta1_init = LLS1.calcThermalState(T);
 theta1_t    = LLS1.propagateTheta(theta1_init, t_array);
 n1_t        = LLS1.calcCharges(theta1_t, 0, t_array);
+toc
 
 
 % Anharmonic potential
-LLS2        = LiebLinigerSolver(x_array, k_array, couplings2);
+tic
+LLS2        = LiebLinigerSolver(x_array, k_array, kw, couplings2);
 theta2_init = LLS2.calcThermalState(T);
 theta2_t    = LLS2.propagateTheta(theta2_init, t_array);
 n2_t        = LLS2.calcCharges(theta2_t, 0, t_array);
+toc
 
 
 %% ------------ Plot results -------------------
