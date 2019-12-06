@@ -570,8 +570,13 @@ methods (Access = public)
         [theta_t, u_t]  = obj.propagateTheta(theta_0, t_array);
         theta_t         = theta_t(t_idx); % get theta at t = 0 and t in tcorr_array
         u_t             = u_t(t_idx); 
-        [rho_t, rhoS_t] = obj.transform2rho(theta_t, tcorr_array);
-        
+        if length(theta_t) > 1
+            [rho_t, rhoS_t] = obj.transform2rho(theta_t, tcorr_array);
+        else
+            [rho_t, rhoS_t] = obj.transform2rho(theta_t{1}, tcorr_array);
+            rho_t = {rho_t};
+            rhoS_t = {rhoS_t};
+        end
         
         % Calculate/prepare outputs
         [q0, j0]        = obj.calcCharges(theta_0, c_idx(2), 0);

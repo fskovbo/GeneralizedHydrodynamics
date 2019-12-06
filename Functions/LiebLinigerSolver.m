@@ -45,12 +45,12 @@ methods (Access = public)
     end
     
     
-    function mu0_fit = fitAtomnumber(obj, T, V_ext, Natoms, setCouplingFlag)
+    function mu0_fit = fitAtomnumber(obj, T, V_ext, Natoms, mu0_guess, setCouplingFlag)
         % Finds mu_0 for a given potential, V_ext, and temperature, T,
         % corresponding to a given atomnumber.
         % NOTE: V_ext is anonymous function with argument (t,x).
         
-        if nargin < 5
+        if nargin < 6
             setCouplingFlag = false;
         end
         
@@ -59,7 +59,6 @@ methods (Access = public)
         end
         
         % Fit mu0 to Natoms
-        mu0_guess   = 0;
         fitfunc     = @(mu0) abs( Natoms - calcNA(obj, mu0, T, V_ext) );
         options     = optimset('Display','iter');
         mu0_fit     = fminsearch(fitfunc, mu0_guess,options);

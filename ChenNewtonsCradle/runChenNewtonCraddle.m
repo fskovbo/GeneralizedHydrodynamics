@@ -78,8 +78,8 @@ c_si        = g1D_si*m_si/hbar_si^2;
 
 %% create arrays
 x_array     = linspace(-xmax_si,xmax_si,M);
-% k_array     = linspace(-kmax_si,kmax_si,N);
-[k_array,kw]=legzo(N, -kmax_si, kmax_si);
+k_array     = linspace(-kmax_si,kmax_si,N);
+% [k_array,kw]=legzo(N, -kmax_si, kmax_si);
 t_array     = linspace(0, tmax_si, Nsteps+1);
 
 
@@ -92,8 +92,8 @@ couplings = { @(t,x) 0              , @(t,x) c_si;
               @(t,x) dmudx(t,x)     , []            };
 
 % LLS         = LiebLinigerSolver_SI(omegaT_si, x_array, k_array, couplings);
-LLS         = LiebLinigerSolver_SI_test(omega_si, x_array, k_array, kw, couplings);
-mu0_fit     = LLS.fitAtomnumber(T_si, Vx, Natoms, true);
+LLS         = LiebLinigerSolver_SI_test(omega_si, x_array, k_array, k_array(2)-k_array(1), couplings);
+mu0_fit     = LLS.fitAtomnumber(T_si, Vx, Natoms, 0, true);
 
 theta_init  = LLS.calcThermalState(T_si);
 

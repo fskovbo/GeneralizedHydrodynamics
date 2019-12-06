@@ -150,15 +150,16 @@ methods (Access = public)
     end
     
     
-    function mu0_fit = fitAtomnumber(obj, T, V_ext, Natoms, setCouplingFlag)        
+    function mu0_fit = fitAtomnumber(obj, T, V_ext, Natoms, mu0_guess, setCouplingFlag)        
         % Convert SI --> TBA
         T       = obj.convert2TBA(T, 'temperature');
+        mu0_guess = obj.convert2TBA(mu0_guess, 'energy');
         if ~isempty(V_ext)
             V_ext   = @(t, x) V_ext( t*obj.t_si, x*obj.Lg_si )/obj.Eg_si;
         end
         
         % Run LLS function
-        mu0_fit = obj.LLS.fitAtomnumber(T, V_ext, Natoms, setCouplingFlag);
+        mu0_fit = obj.LLS.fitAtomnumber(T, V_ext, Natoms, mu0_guess, setCouplingFlag);
         
         % Convert TBA --> SI
         mu0_fit = obj.convert2SI(mu0_fit, 'energy');

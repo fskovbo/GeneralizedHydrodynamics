@@ -229,7 +229,7 @@ methods (Access = private)
         % IMPORTANT! update W3 for next step
         integr      = vec .* Delta;
         integr_sdr  = obj.applyDressing( integr, theta_tx, 1) - integr; % should be (1xNxM)
-        W3          = W3 + delta_x*integr_sdr; 
+        W3          = W3 + delta_x*integr_sdr;         
         
         % Calculate indirect contribution via Delta
         indirect    = sum(trapz( obj.rapid_grid, double(Delta.*rho_tx.*f_tx.*g_tx) ,1), 3); % integrate over rapidity and sum over type

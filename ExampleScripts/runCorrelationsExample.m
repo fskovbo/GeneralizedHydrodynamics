@@ -23,7 +23,7 @@ tcorr_array = dt:dt:2;
 %% Run simulations
 couplings   = { @(t,x) 5 , @(t,x) 1 };
 
-LLS             = LiebLinigerSolver(x_array, k_array, couplings);
+LLS             = LiebLinigerSolver(x_array, k_array, k_array(2)-k_array(1), couplings);
 
 c_idx           = [0, 0];
 areCurrents     = [0, 0];

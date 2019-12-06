@@ -3,53 +3,50 @@ clear all; close all;
 addpath('..\Functions\')
 
 %% define parameters
-N           = 2^6;
-M           = 2^7;
-Ntypes      = 1;
-dt          = 0.005;
 
-kmax        = pi/2;
-xmax        = 1;
+N       = 2^6;
+M       = 2^6;
 
-k_array     = linspace(-kmax, kmax, N);
-x_array     = linspace(-xmax, xmax, M);
-% tcorr_array = [0.1, 0.2];%0.1:0.1:0.3;
+kmax    = 4;
+xmax    = 4;
+
+dt      = 0.05;
+
+
+k_array     = linspace(-kmax,kmax,N);
+x_array     = linspace(-xmax,xmax,M);
+% tcorr_array = 0.25:0.25:1;
 tcorr_array = dt:dt:1;
 
-
-T           = 0.25;
-
-options.periodRapid = true;
+options.extrapFlag = true;
 
 
-%% Define physical couplings
-couplings       = { @(t,x) -1 , @(t,x) acosh(1.5) };
+%% Run simulations
+couplings   = { @(t,x) 0 , @(t,x) 1 };
+T           = @(x) 1 + exp(-x.^2); %1.5 + 0.25*tanh(x);
 
-coup_init       = couplings;
-coup_init{1}    = @(t,x) -1 - 8*x.^2; 
+shG             = sinhGordonSolver(x_array, k_array, k_array(2)-k_array(1), couplings, options);
 
-
-%% Run simulation
 c_idx           = [0, 0];
 areCurrents     = [0, 0];
 
-XXZ             = XXZchainSolver(x_array, k_array, k_array(2)-k_array(1), couplings, Ntypes, options);
-% [corrmat, theta, C1P] = XXZ.calcCorrelationMatrix(T, coup_init, tcorr_array, dt, c_idx, areCurrents);
 
-corrfunc = XXZ.calcCorrelationFunction(T, coup_init, tcorr_array, dt, c_idx, areCurrents);
+% [corrmat, theta, C1P] = LLS.calcCorrelationMatrix(T, couplings, tcorr_array, dt, c_idx, areCurrents);
+
+[corrfunc, theta, C1P] = shG.calcCorrelationFunction(T, couplings, tcorr_array, dt, c_idx, areCurrents);
 
 
-%% PLOT
+% %% PLOT correlation matrix
 % for i = 1:length(tcorr_array)
 %  
 %     figure
+%     
 %     
 %     subplot(3,2,[1 3])
 %     imagesc(x_array,x_array, corrmat(:,:,1,i))
 %     ylabel('x')
 %     xlabel('y')
 %     c1 = colorbar;
-%     caxis([0 0.7])
 %     c1.Location = 'northoutside';
 %     set(gca,'YDir','normal')
 %     title('direct')
@@ -59,7 +56,6 @@ corrfunc = XXZ.calcCorrelationFunction(T, coup_init, tcorr_array, dt, c_idx, are
 %     ylabel('x')
 %     xlabel('y')
 %     c2 = colorbar;
-%     caxis([-0.01 0.05])
 %     c2.Location = 'northoutside';
 %     set(gca,'YDir','normal')
 %     title('indirect')
@@ -79,22 +75,6 @@ corrfunc = XXZ.calcCorrelationFunction(T, coup_init, tcorr_array, dt, c_idx, are
 %     suptitle(['<n(x, t = ' num2str(tcorr_array(i)) ') n(y, 0)>'])
 %     
 % end
-% 
-% %%
-% for i = 1:length(tcorr_array)
-%  
-%     figure
-%     
-%     imagesc(x_array,x_array, sum(corrmat(:,:,:,i),3))
-%     ylabel('x')
-%     xlabel('y')
-%     colorbar
-%     caxis([-0.1 1])
-%     set(gca,'YDir','normal')
-% 
-%     title(['<n(x, t = ' num2str(tcorr_array(i)) ') n(y, 0)>'])
-%     
-% end
 
 
 %% PLOT correlation function
@@ -105,7 +85,7 @@ imagesc(x_array,tcorr_array,corrfunc(:,:,1)')
 set(gca,'YDir','normal')
 xlabel('x')
 ylabel('t')
-caxis([0 0.2])
+caxis([0 3])
 title('direct')
 
 subplot(1,3,2)
@@ -113,7 +93,7 @@ imagesc(x_array,tcorr_array,corrfunc(:,:,2)')
 set(gca,'YDir','normal')
 xlabel('x')
 ylabel('t')
-caxis([-0.01 0.01])
+% caxis([0 0.3])
 title('indirect')
 
 subplot(1,3,3)
@@ -121,7 +101,7 @@ imagesc(x_array,tcorr_array,corrfunc(:,:,1)' + corrfunc(:,:,2)')
 set(gca,'YDir','normal')
 xlabel('x')
 ylabel('t')
-caxis([-0.01 0.2])
+caxis([0 3])
 title('full')
 
 suptitle(['<O(x, t) O(0, 0)>'])
